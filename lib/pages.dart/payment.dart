@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:async';
-import 'dart:ui';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:myproject/services/shared_pref.dart';
@@ -20,9 +18,13 @@ class Payment extends StatefulWidget {
 class _PaymentState extends State<Payment> {
   String? wallet, id;
   int? add;
-  TextEditingController amountcontroller = new TextEditingController();
+  TextEditingController amountController = TextEditingController();
+  bool _isLoading = false;
 
-  // หลังแก้ไข
+  // รายการจำนวนเงินที่แนะนำ
+  final List<String> _suggestedAmounts = ["50", "100", "200", "500"];
+
+  // ดึงข้อมูล shared preferences
   getthesharedpref() async {
     try {
       wallet = await SharedPreferenceHelper().getUserWallet();
@@ -56,248 +58,21 @@ class _PaymentState extends State<Payment> {
 
   Map<String, dynamic>? paymentIntent;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: wallet == null
-          ? Center(
-              child:
-                  CircularProgressIndicator()) // แก้ไขตรงนี้ให้แสดง loading ตรงกลางหน้าจอ
-          : Container(
-              margin: EdgeInsets.only(top: 60.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Material(
-                      elevation: 2.0,
-                      child: Container(
-                          padding: EdgeInsets.only(bottom: 10.0),
-                          child: Center(
-                              child: Text(
-                            "Wallet",
-                            style: AppWidget.HeadlineTextFeildStyle(),
-                          )))),
-                  SizedBox(
-                    height: 30.0,
-                  ),
-                  Container(
-                    padding:
-                        EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
-                    width: MediaQuery.of(context).size.width,
-                    decoration: BoxDecoration(color: Color(0xFFF2F2F2)),
-                    child: Row(
-                      children: [
-                        Image.asset(
-                          "images/wallet.png",
-                          height: 60,
-                          width: 60,
-                          fit: BoxFit.cover,
-                        ),
-                        SizedBox(
-                          width: 40.0,
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Your Wallet",
-                              style: AppWidget.LightTextFeildStyle(),
-                            ),
-                            SizedBox(
-                              height: 5.0,
-                            ),
-                            Text(wallet! + "\THB",
-                                style: AppWidget.semiboldTextFeildStyle())
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: 20.0,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 20.0),
-                    child: Text(
-                      "Add money",
-                      style: AppWidget.semiboldTextFeildStyle(),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 10.0,
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          makePayment("50");
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Color(0xFFE9E2E2)),
-                              borderRadius: BorderRadius.circular(5)),
-                          child: Text(
-                            "50" + "\THB",
-                            style: AppWidget.semiboldTextFeildStyle(),
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          makePayment("100");
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Color(0xFFE9E2E2)),
-                              borderRadius: BorderRadius.circular(5)),
-                          child: Text(
-                            "100" + "\THB",
-                            style: AppWidget.semiboldTextFeildStyle(),
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          makePayment("150");
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Color(0xFFE9E2E2)),
-                              borderRadius: BorderRadius.circular(5)),
-                          child: Text(
-                            "150" + "\THB",
-                            style: AppWidget.semiboldTextFeildStyle(),
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          makePayment("300");
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                              border: Border.all(color: Color(0xFFE9E2E2)),
-                              borderRadius: BorderRadius.circular(5)),
-                          child: Text(
-                            "300" + "\THB",
-                            style: AppWidget.semiboldTextFeildStyle(),
-                          ),
-                        ),
-                      )
-                    ],
-                  ),
-                  SizedBox(
-                    height: 50.0,
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      // ล้างข้อมูลใน controller ก่อนเปิด dialog
-                      amountcontroller.clear();
-                      openEdit();
-                    },
-                    child: Container(
-                      margin: EdgeInsets.symmetric(horizontal: 20.0),
-                      padding: EdgeInsets.symmetric(vertical: 12.0),
-                      width: MediaQuery.of(context).size.width,
-                      decoration: BoxDecoration(
-                          color: Color(0xFF008080),
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Center(
-                        child: Text(
-                          "Add Money",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16.0,
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
-    );
-  }
-
-  Future<void> makePayment(String amount) async {
+  // สร้าง Payment Intent สำหรับ Stripe
+  Future<Map<String, dynamic>> createPaymentIntent(
+      String amount, String currency) async {
     try {
-      paymentIntent = await createPaymentIntent(amount, 'THB');
-      //Payment Sheet
-      await Stripe.instance
-          .initPaymentSheet(
-              paymentSheetParameters: SetupPaymentSheetParameters(
-                  paymentIntentClientSecret: paymentIntent!['client_secret'],
-                  // applePay: const PaymentSheetApplePay(merchantCountryCode: '+92',),
-                  // googlePay: const PaymentSheetGooglePay(testEnv: true, currencyCode: "US", merchantCountryCode: "+92"),
-                  style: ThemeMode.dark,
-                  merchantDisplayName: 'Adnan'))
-          .then((value) {});
+      // แปลงจำนวนเงินเป็นรูปแบบที่ Stripe ต้องการ (สตางค์)
+      final calculatedAmount = (int.parse(amount) * 100).toString();
 
-      ///now finally display payment sheeet
-      displayPaymentSheet(amount);
-    } catch (e, s) {
-      print('exception:$e$s');
-    }
-  }
-
-  displayPaymentSheet(String amount) async {
-    try {
-      await Stripe.instance.presentPaymentSheet().then((value) async {
-        add = int.parse(wallet!) + int.parse(amount);
-        await SharedPreferenceHelper().saveUserWallet(add.toString());
-        // ignore: use_build_context_synchronously
-        showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: const [
-                          Icon(
-                            Icons.check_circle,
-                            color: Colors.green,
-                          ),
-                          Text("Payment Successfull"),
-                        ],
-                      ),
-                    ],
-                  ),
-                ));
-        await getthesharedpref();
-        // ignore: use_build_context_synchronously
-
-        paymentIntent = null;
-      }).onError((error, stackTrace) {
-        print('Error is:--->$error $stackTrace');
-      });
-    } on StripeException catch (e) {
-      print('Error is:---> $e');
-      showDialog(
-          context: context,
-          builder: (_) => const AlertDialog(
-                content: Text("Cancelled "),
-              ));
-    } catch (e) {
-      print('$e');
-    }
-  }
-
-  //  Future<Map<String, dynamic>>
-  createPaymentIntent(String amount, String currency) async {
-    try {
+      // สร้าง body สำหรับ request
       Map<String, dynamic> body = {
-        'amount': calculateAmount(amount),
+        'amount': calculatedAmount,
         'currency': currency,
         'payment_method_types[]': 'card'
       };
 
+      // ส่ง request ไปยัง Stripe API
       var response = await http.post(
         Uri.parse('https://api.stripe.com/v1/payment_intents'),
         headers: {
@@ -306,116 +81,369 @@ class _PaymentState extends State<Payment> {
         },
         body: body,
       );
-      // ignore: avoid_print
-      print('Payment Intent Body->>> ${response.body.toString()}');
+
       return jsonDecode(response.body);
-    } catch (err) {
-      // ignore: avoid_print
-      print('err charging user: ${err.toString()}');
+    } catch (e) {
+      print('Error creating payment intent: $e');
+      throw Exception(e.toString());
     }
   }
 
-  calculateAmount(String amount) {
-    final calculatedAmout = (int.parse(amount)) * 100;
+  // แสดงหน้าจอชำระเงินของ Stripe
+  Future<bool> displayPaymentSheet(String amount) async {
+    try {
+      setState(() => _isLoading = true);
 
-    return calculatedAmout.toString();
+      // สร้าง payment intent
+      paymentIntent = await createPaymentIntent(amount, 'THB');
+
+      // ตรวจสอบข้อผิดพลาดจาก payment intent
+      if (paymentIntent != null && paymentIntent!.containsKey('error')) {
+        throw Exception(paymentIntent!['error']['message']);
+      }
+
+      // ตั้งค่า payment sheet
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: paymentIntent!['client_secret'],
+          style: ThemeMode.dark,
+          merchantDisplayName: 'แอปรับฝากเลี้ยงแมว',
+          allowsDelayedPaymentMethods: true,
+        ),
+      );
+
+      // แสดง payment sheet
+      await Stripe.instance.presentPaymentSheet();
+
+      // อัพเดท wallet หลังจากชำระเงินสำเร็จ
+      add = int.parse(wallet!) + int.parse(amount);
+      await SharedPreferenceHelper().saveUserWallet(add.toString());
+
+      // แสดงข้อความสำเร็จ
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('ชำระเงินสำเร็จ เติมเงิน ฿$amount ในกระเป๋าเงิน'),
+        backgroundColor: Colors.green,
+      ));
+
+      // อัพเดทค่า wallet ในหน้าจอ
+      await getthesharedpref();
+
+      return true;
+    } catch (e) {
+      // จัดการข้อผิดพลาด
+      if (e is StripeException) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('การชำระเงินถูกยกเลิก'),
+          backgroundColor: Colors.red,
+        ));
+      } else {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('เกิดข้อผิดพลาด: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ));
+      }
+      return false;
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
-  // แก้ไขส่วนของปุ่ม Add Money ในฟังก์ชัน openEdit()
-  Future openEdit() => showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-            content: SingleChildScrollView(
-              child: Container(
+  // ฟังก์ชันเติมเงิน
+  Future<void> addMoney(String amount) async {
+    // ตรวจสอบว่าจำนวนเงินถูกต้อง
+    if (amount.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('กรุณาระบุจำนวนเงิน')));
+      return;
+    }
+
+    try {
+      int.parse(amount);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('กรุณาระบุจำนวนเงินที่ถูกต้อง')));
+      return;
+    }
+
+    // แสดงหน้าจอชำระเงิน
+    bool success = await displayPaymentSheet(amount);
+
+    // บันทึกประวัติการเติมเงิน
+    if (success && id != null) {
+      try {
+        await FirebaseFirestore.instance.collection('payment_history').add({
+          'userId': id,
+          'amount': int.parse(amount),
+          'type': 'topup',
+          'method': 'stripe',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        print('Error saving payment history: $e');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: wallet == null
+          ? Center(child: CircularProgressIndicator())
+          : Container(
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        GestureDetector(
-                            onTap: () {
-                              Navigator.pop(context);
-                            },
-                            child: Icon(Icons.cancel)),
-                        SizedBox(
-                          width: 60.0,
+                    // ส่วนหัว
+                    Container(
+                      padding: EdgeInsets.only(
+                          top: 50, left: 20, right: 20, bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.teal,
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(30),
+                          bottomRight: Radius.circular(30),
                         ),
-                        Center(
-                          child: Text(
-                            "Add Money",
-                            style: TextStyle(
-                              color: Color(0xFF008080),
-                              fontWeight: FontWeight.bold,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Center(
+                            child: Text(
+                              "กระเป๋าเงิน",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        )
-                      ],
-                    ),
-                    SizedBox(
-                      height: 20.0,
-                    ),
-                    Text("Amount"),
-                    SizedBox(
-                      height: 10.0,
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.0),
-                      decoration: BoxDecoration(
-                          border: Border.all(color: Colors.black38, width: 2.0),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: TextField(
-                        controller: amountcontroller,
-                        keyboardType: TextInputType.number, // เพิ่มบรรทัดนี้
-                        decoration: InputDecoration(
-                            border: InputBorder.none, hintText: 'Enter Amount'),
-                      ),
-                    ),
-                    SizedBox(
-                      height: 20.0,
-                    ),
-                    Center(
-                      child: GestureDetector(
-                        onTap: () {
-                          // เพิ่มการตรวจสอบค่าที่กรอก
-                          if (amountcontroller.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Please enter an amount')),
-                            );
-                            return;
-                          }
-
-                          // ตรวจสอบว่าเป็นตัวเลขหรือไม่
-                          try {
-                            int.parse(amountcontroller.text.trim());
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Please enter a valid number')),
-                            );
-                            return;
-                          }
-
-                          Navigator.pop(context);
-                          makePayment(amountcontroller.text);
-                        },
-                        child: Container(
-                          width: 100,
-                          padding: EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: Color(0xFF008080),
-                            borderRadius: BorderRadius.circular(10),
+                          SizedBox(height: 20),
+                          Container(
+                            padding: EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  spreadRadius: 5,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  "ยอดเงินคงเหลือ",
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  "฿${wallet!}",
+                                  style: TextStyle(
+                                    color: Colors.teal,
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: Center(
-                              child: Text(
-                            "Pay",
-                            style: TextStyle(color: Colors.white),
-                          )),
-                        ),
+                        ],
                       ),
-                    )
+                    ),
+
+                    // ส่วนเติมเงิน
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "เติมเงิน",
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            "เลือกจำนวนเงินที่ต้องการเติม",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          SizedBox(height: 20),
+
+                          // จำนวนเงินที่แนะนำ
+                          GridView.count(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            crossAxisCount: 2,
+                            childAspectRatio: 2.0,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            children: _suggestedAmounts.map((amount) {
+                              return GestureDetector(
+                                onTap:
+                                    _isLoading ? null : () => addMoney(amount),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border:
+                                        Border.all(color: Colors.teal.shade200),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.03),
+                                        blurRadius: 5,
+                                        offset: Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      "฿$amount",
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.teal,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+
+                          SizedBox(height: 20),
+
+                          // ช่องกรอกจำนวนเงินเอง
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 5,
+                                  offset: Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: TextField(
+                              controller: amountController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                hintText: 'ระบุจำนวนเงิน',
+                                prefixIcon: Icon(Icons.monetization_on,
+                                    color: Colors.teal),
+                                suffixText: 'THB',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                  borderSide: BorderSide.none,
+                                ),
+                                fillColor: Colors.white,
+                                filled: true,
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: 20),
+
+                          // ปุ่มเติมเงิน
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                      addMoney(amountController.text.trim());
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.teal,
+                                padding: EdgeInsets.symmetric(vertical: 15),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                elevation: 2,
+                              ),
+                              child: _isLoading
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ))
+                                  : Text(
+                                      "เติมเงิน",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          SizedBox(height: 20),
+
+                          // คำอธิบาย
+                          Container(
+                            padding: EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "วิธีการเติมเงิน",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  "1. เลือกหรือระบุจำนวนเงินที่ต้องการเติม\n"
+                                  "2. กดปุ่ม 'เติมเงิน' เพื่อดำเนินการ\n"
+                                  "3. กรอกข้อมูลบัตรเครดิต/เดบิตของคุณ\n"
+                                  "4. ยืนยันการชำระเงิน",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-          ));
+    );
+  }
 }
