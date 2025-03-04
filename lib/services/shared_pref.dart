@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SharedPreferenceHelper {
@@ -82,7 +83,27 @@ class SharedPreferenceHelper {
     return await prefs.clear(); // Clear all data
   }
 
-  saveUserWallet(String string) {}
+  Future<bool> saveUserWallet(String amount) async {
+    print('Saving wallet amount: $amount');
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool result = await prefs.setString(userWalletKey, amount);
+    print('Save result: $result');
+    return result;
+  }
 
-  getUserWallet() {}
+  Future<String?> getUserWallet() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? wallet = prefs.getString(userWalletKey);
+    print('Retrieved wallet amount: $wallet');
+    return wallet;
+  }
+
+  Future<void> updateUserWallet(String userId, String amount) async {
+    return await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .update({
+      'wallet': amount,
+    });
+  }
 }
