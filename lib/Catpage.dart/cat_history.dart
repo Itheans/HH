@@ -19,6 +19,7 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
   bool isLoading = true;
   final searchController = TextEditingController();
 
+  // แก้ที่บรรทัด 25-48 ของไฟล์ cat_history.dart
   @override
   void initState() {
     super.initState();
@@ -26,27 +27,46 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
   }
 
   Future<void> loadCats() async {
+    setState(() {
+      isLoading = true; // เริ่มต้นอยู่ในสถานะ loading
+    });
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       print("Current user: ${user?.uid}");
 
       if (user != null) {
-        FirebaseFirestore.instance
+        // เปลี่ยนจาก listen เป็น get() เพื่อดึงข้อมูลครั้งเดียว
+        QuerySnapshot snapshot = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .collection('cats')
-            .snapshots()
-            .listen((snapshot) {
-          print("Snapshot data: ${snapshot.docs}");
+            .get();
+
+        print("Snapshot data: ${snapshot.docs}");
+
+        if (mounted) {
+          // ตรวจสอบว่า widget ยังอยู่ในต้นไม้ UI หรือไม่
           setState(() {
             cats = snapshot.docs.map((doc) => Cat.fromFirestore(doc)).toList();
             filteredCats = cats;
-            isLoading = false;
+            isLoading = false; // จบการ loading
           });
-        }, onError: (error) => print("Error: $error"));
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            isLoading = false; // จบการ loading หากไม่มีผู้ใช้
+          });
+        }
       }
     } catch (e) {
       print("Exception: $e");
+      if (mounted) {
+        setState(() {
+          isLoading = false; // จบการ loading หากเกิดข้อผิดพลาด
+        });
+      }
     }
   }
 

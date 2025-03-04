@@ -25,6 +25,7 @@ class Cat {
     this.lastSittingDate,
   });
 
+  // แก้ไขที่ factory method
   factory Cat.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Cat(
@@ -32,7 +33,7 @@ class Cat {
       name: data['name'] ?? '',
       breed: data['breed'] ?? '',
       imagePath: data['imagePath'] ?? '',
-      birthDate: data['birthDate'],
+      birthDate: data['birthDate'], // อาจเป็น null
       vaccinations: data['vaccinations'] ?? '',
       description: data['description'] ?? '',
       isForSitting: data['isForSitting'] ?? false,
