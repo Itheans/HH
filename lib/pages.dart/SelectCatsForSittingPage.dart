@@ -6,14 +6,15 @@ import 'package:myproject/pages.dart/matching/matching.dart';
 
 class SelectCatsForSittingPage extends StatefulWidget {
   final List<DateTime> targetDates;
-  
+
   const SelectCatsForSittingPage({
     Key? key,
     required this.targetDates,
   }) : super(key: key);
 
   @override
-  State<SelectCatsForSittingPage> createState() => _SelectCatsForSittingPageState();
+  State<SelectCatsForSittingPage> createState() =>
+      _SelectCatsForSittingPageState();
 }
 
 class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
@@ -70,19 +71,33 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
+      // เก็บ ID ของแมวทั้งหมดที่ถูกเลือก
+      final List<String> catIds = selectedCats.map((cat) => cat.id).toList();
+
       // Create a booking request document
       final bookingRequest = {
         'userId': user.uid,
-        'catIds': selectedCats.map((cat) => cat.id).toList(),
-        'dates': widget.targetDates.map((date) => Timestamp.fromDate(date)).toList(),
+        'catIds': catIds, // เพิ่ม/แก้ไขส่วนนี้ให้เก็บ ID ของแมวที่เลือก
+        'dates':
+            widget.targetDates.map((date) => Timestamp.fromDate(date)).toList(),
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       };
 
       // Save the booking request
-      await FirebaseFirestore.instance
+      DocumentReference bookingRef = await FirebaseFirestore.instance
           .collection('booking_requests')
           .add(bookingRequest);
+
+      // อัพเดตสถานะแมวที่เลือก
+      for (var cat in selectedCats) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('cats')
+            .doc(cat.id)
+            .update({'isForSitting': true});
+      }
 
       // Navigate to sitter search
       if (!mounted) return;
@@ -91,6 +106,7 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
         MaterialPageRoute(
           builder: (context) => SearchSittersScreen(
             targetDates: widget.targetDates,
+            catIds: selectedCats.map((cat) => cat.id).toList(), // Add this line
           ),
         ),
       );
@@ -118,7 +134,8 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.pets, size: 64, color: Colors.grey[400]),
+                              Icon(Icons.pets,
+                                  size: 64, color: Colors.grey[400]),
                               const SizedBox(height: 16),
                               Text(
                                 'No cats registered',
@@ -143,7 +160,9 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 side: BorderSide(
-                                  color: isSelected ? Colors.orange : Colors.transparent,
+                                  color: isSelected
+                                      ? Colors.orange
+                                      : Colors.transparent,
                                   width: 2,
                                 ),
                               ),
@@ -158,10 +177,12 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
                                         width: 80,
                                         height: 80,
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                           image: cat.imagePath.isNotEmpty
                                               ? DecorationImage(
-                                                  image: NetworkImage(cat.imagePath),
+                                                  image: NetworkImage(
+                                                      cat.imagePath),
                                                   fit: BoxFit.cover,
                                                 )
                                               : null,
@@ -177,7 +198,8 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
                                       const SizedBox(width: 16),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               cat.name,
@@ -197,7 +219,8 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
                                       ),
                                       Checkbox(
                                         value: isSelected,
-                                        onChanged: (_) => _toggleCatSelection(cat),
+                                        onChanged: (_) =>
+                                            _toggleCatSelection(cat),
                                         activeColor: Colors.orange,
                                       ),
                                     ],

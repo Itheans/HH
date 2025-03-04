@@ -1,4 +1,5 @@
 // lib/pages.dart/matching/matching.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -62,14 +63,41 @@ class _SelectTargetDateScreenState extends State<SelectTargetDateScreen> {
     });
   }
 
-  void _confirmDate() {
+  void _confirmDate() async {
     if (_selectedDates.isNotEmpty) {
+      // Get current user
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('กรุณาเข้าสู่ระบบ')),
+        );
+        return;
+      }
+
+      // Fetch cats marked for sitting
+      final catsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('cats')
+          .where('isForSitting', isEqualTo: true)
+          .get();
+
+      List<String> catIds = catsSnapshot.docs.map((doc) => doc.id).toList();
+
+      if (catIds.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('กรุณาเลือกแมวที่ต้องการฝากเลี้ยง')),
+        );
+        return;
+      }
+
       widget.onDateSelected(_selectedDates);
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => SearchSittersScreen(
             targetDates: _selectedDates,
+            catIds: catIds, // Add the required parameter
           ),
         ),
       );
@@ -426,10 +454,12 @@ class SitterService {
 
 class SearchSittersScreen extends StatefulWidget {
   final List<DateTime> targetDates;
+  final List<String> catIds;
 
   const SearchSittersScreen({
     Key? key,
     required this.targetDates,
+    required this.catIds,
   }) : super(key: key);
 
   @override
@@ -652,6 +682,7 @@ class _SearchSittersScreenState extends State<SearchSittersScreen> {
                                     builder: (context) => SitterProfileScreen(
                                       sitterId: sitter['id'],
                                       targetDates: widget.targetDates,
+                                      catIds: widget.catIds, // Add this line
                                     ),
                                   ),
                                 );

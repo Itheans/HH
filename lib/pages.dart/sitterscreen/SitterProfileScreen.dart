@@ -11,11 +11,13 @@ import 'package:myproject/pages.dart/sitterscreen/bookscreen.dart';
 class SitterProfileScreen extends StatefulWidget {
   final String sitterId;
   final List<DateTime> targetDates;
+  final List<String> catIds;
 
   const SitterProfileScreen({
     Key? key,
     required this.sitterId,
     required this.targetDates,
+    required this.catIds, // Add required parameter
   }) : super(key: key);
 
   @override
@@ -387,9 +389,8 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
                   builder: (context) => BookingScreen(
                     sitterId: widget.sitterId,
                     selectedDates: widget.targetDates,
-
-                    pricePerDay: _sitterData!['pricePerDay'] ??
-                        35.0, // Add default price or get from sitter data
+                    catIds: widget.catIds, // Add the required catIds parameter
+                    pricePerDay: _sitterData!['pricePerDay'] ?? 35.0,
                   ),
                 ),
               );

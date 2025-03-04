@@ -6,6 +6,7 @@ import 'package:myproject/pages.dart/sitterscreen/bookingService.dart';
 
 class BookingScreen extends StatefulWidget {
   final String sitterId;
+  final List<String> catIds;
   final List<DateTime> selectedDates;
   final double pricePerDay;
 
@@ -14,6 +15,7 @@ class BookingScreen extends StatefulWidget {
     required this.sitterId,
     required this.selectedDates,
     required this.pricePerDay,
+    required this.catIds,
   }) : super(key: key);
 
   @override
@@ -40,12 +42,31 @@ class _BookingScreenState extends State<BookingScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("กรุณาเข้าสู่ระบบ");
+
+      // ดึงข้อมูลแมวที่มีสถานะ isForSitting เป็น true
+      final catsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('cats')
+          .where('isForSitting', isEqualTo: true)
+          .get();
+
+      List<String> catIds = catsSnapshot.docs.map((doc) => doc.id).toList();
+
+      if (catIds.isEmpty) {
+        throw Exception("กรุณาเลือกแมวที่ต้องการฝากเลี้ยง");
+      }
+
       // Using the BookingService to handle the transaction
       final bookingId = await _bookingService.createBooking(
         sitterId: widget.sitterId,
         dates: widget.selectedDates,
         totalPrice: widget.pricePerDay * widget.selectedDates.length,
         notes: _notesController.text.trim(),
+        catIds: catIds,
+        // เพิ่มพารามิเตอร์นี้
       );
 
       if (!mounted) return;
@@ -155,5 +176,32 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
       ),
     );
+  }
+}
+
+class BookingService {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<String> createBooking({
+    required String sitterId,
+    required List<DateTime> dates,
+    required double totalPrice,
+    required String notes,
+    required List<String> catIds,
+  }) async {
+    // Create a reference to a new document with auto-generated ID
+    final bookingRef = _firestore.collection('bookings').doc();
+
+    await bookingRef.set({
+      'sitterId': sitterId,
+      'dates': dates.map((date) => Timestamp.fromDate(date)).toList(),
+      'totalPrice': totalPrice,
+      'notes': notes,
+      'catIds': catIds,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    return bookingRef.id;
   }
 }

@@ -6,17 +6,33 @@ class BookingService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Create a new booking with proper availability checking
+  // แก้ไขฟังก์ชัน createBooking
   Future<String> createBooking({
     required String sitterId,
     required List<DateTime> dates,
     required double totalPrice,
     String? notes,
+    List<String>? catIds, // เพิ่มพารามิเตอร์นี้
   }) async {
     try {
       // Check authentication
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         throw Exception('กรุณาเข้าสู่ระบบก่อนทำการจอง');
+      }
+
+      // ถ้าไม่มี catIds ให้ดึงจาก Firestore
+      List<String> selectedCatIds = catIds ?? [];
+      if (selectedCatIds.isEmpty) {
+        // ดึงข้อมูลแมวที่มีสถานะ isForSitting เป็น true
+        final catsSnapshot = await _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('cats')
+            .where('isForSitting', isEqualTo: true)
+            .get();
+
+        selectedCatIds = catsSnapshot.docs.map((doc) => doc.id).toList();
       }
 
       // Run all checks in a transaction to ensure data consistency
@@ -50,6 +66,7 @@ class BookingService {
           'status': 'pending',
           'totalPrice': totalPrice,
           'notes': notes,
+          'catIds': selectedCatIds, // เพิ่มข้อมูล catIds
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
