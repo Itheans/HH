@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:myproject/Catpage.dart/vaccine_selection_page.dart';
-import 'cat.dart';
+import 'package:myproject/Catpage.dart/cat.dart'; // Ensure correct import
 
 class CatRegistrationPage extends StatefulWidget {
   const CatRegistrationPage({Key? key, this.cat}) : super(key: key);
@@ -323,12 +323,6 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
         vaccinations: getSelectedVaccinations(),
         description: descriptionController.text, // ระบุค่า description
       );
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('cats')
-          .add(newCat.toMap());
 
       showDialog(
         context: context,
