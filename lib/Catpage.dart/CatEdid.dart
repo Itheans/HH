@@ -41,61 +41,40 @@ class _CatEditPageState extends State<CatEditPage> {
     try {
       // ดึง user ปัจจุบัน
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('กรุณาเข้าสู่ระบบก่อนการแก้ไขข้อมูล')),
-        );
-        return;
-      }
+      if (user == null) return;
 
-      // ตรวจสอบว่าข้อมูลที่จะอัปเดตถูกต้องหรือไม่
-      if (nameController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('กรุณาระบุชื่อแมว')),
-        );
-        return;
-      }
-
-      // ข้อมูลที่จะอัปเดต
-      Map<String, dynamic> updates = {
-        'name': nameController.text.trim(),
-        'breed': breedController.text.trim(),
-        'vaccinations': vaccinationsController.text.trim(),
-        'description': descriptionController.text.trim(),
-      };
-
-      print("Updating cat ${widget.cat.id} with data: $updates");
-
-      // อัปเดตข้อมูลแมวใน Firestore
+      // อัพเดตข้อมูลแมวใน Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('cats')
           .doc(widget.cat.id)
-          .update(updates);
+          .update({
+        'name': nameController.text,
+        'breed': breedController.text,
+        'vaccinations': vaccinationsController.text,
+        'description': descriptionController.text,
+      });
 
-      Cat updatedCat = Cat(
-        id: widget.cat.id,
-        name: nameController.text.trim(),
-        breed: breedController.text.trim(),
-        imagePath: widget.cat.imagePath,
-        birthDate: widget.cat.birthDate,
-        vaccinations: vaccinationsController.text.trim(),
-        description: descriptionController.text.trim(),
-        isForSitting: widget.cat.isForSitting,
-        sittingStatus: widget.cat.sittingStatus,
-        lastSittingDate: widget.cat.lastSittingDate,
+      Navigator.pop(
+        context,
+        Cat(
+          id: widget.cat.id,
+          name: nameController.text,
+          breed: breedController.text,
+          imagePath: widget.cat.imagePath,
+          birthDate: widget.cat.birthDate,
+          vaccinations: vaccinationsController.text,
+          description: descriptionController.text,
+        ),
       );
 
-      Navigator.pop(context, updatedCat);
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('แก้ไขข้อมูลแมวเรียบร้อยแล้ว')),
+        SnackBar(content: Text('Successfully updated ${widget.cat.name}')),
       );
     } catch (e) {
-      print("Error in _saveChanges: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เกิดข้อผิดพลาดในการแก้ไขข้อมูล: $e')),
+        SnackBar(content: Text('Failed to update cat data: $e')),
       );
     }
   }

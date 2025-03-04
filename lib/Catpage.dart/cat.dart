@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Cat {
@@ -10,9 +8,9 @@ class Cat {
   final Timestamp? birthDate;
   final String vaccinations;
   final String description;
-  final bool isForSitting;
-  final String? sittingStatus;
-  final Timestamp? lastSittingDate;
+  final bool isForSitting; // เพิ่มฟิลด์สำหรับติดตามสถานะการฝากเลี้ยง
+  final String? sittingStatus; // เพิ่มฟิลด์สำหรับติดตามสถานะการจับคู่
+  final Timestamp? lastSittingDate; // เพิ่มฟิลด์สำหรับเก็บวันที่ฝากเลี้ยงล่าสุด
 
   Cat({
     required this.id,
@@ -22,99 +20,58 @@ class Cat {
     this.birthDate,
     required this.vaccinations,
     required this.description,
-    this.isForSitting = false,
-    this.sittingStatus,
+    this.isForSitting = false, // ค่าเริ่มต้นเป็น false
+    this.sittingStatus, // สถานะเช่น 'pending', 'matched', 'completed'
     this.lastSittingDate,
   });
 
   factory Cat.fromFirestore(DocumentSnapshot doc) {
-    try {
-      // ตรวจสอบว่ามีข้อมูลหรือไม่
-      if (!doc.exists) {
-        print("Document ${doc.id} does not exist");
-        return Cat(
-          id: doc.id,
-          name: 'ไม่พบข้อมูล',
-          breed: 'ไม่ทราบ',
-          imagePath: '',
-          vaccinations: '',
-          description: '',
-        );
-      }
-
-      // ตรวจสอบว่าแปลงข้อมูลเป็น Map ได้หรือไม่
-      Map<String, dynamic>? data;
-      try {
-        data = doc.data() as Map<String, dynamic>?;
-      } catch (e) {
-        print("Error casting doc.data() to Map<String, dynamic>: $e");
-        return Cat(
-          id: doc.id,
-          name: 'ข้อมูลไม่ถูกต้อง',
-          breed: 'ไม่ทราบ',
-          imagePath: '',
-          vaccinations: '',
-          description: '',
-        );
-      }
-
-      // ถ้าไม่มีข้อมูล
-      if (data == null) {
-        print("Data is null for document ${doc.id}");
-        return Cat(
-          id: doc.id,
-          name: 'ข้อมูลว่างเปล่า',
-          breed: 'ไม่ทราบ',
-          imagePath: '',
-          vaccinations: '',
-          description: '',
-        );
-      }
-
-      // ตรวจสอบข้อมูลสำคัญแต่ละอย่าง
-      String name = '';
-      if (data.containsKey('name')) {
-        var nameValue = data['name'];
-        if (nameValue is String) {
-          name = nameValue;
-        } else {
-          print("Name is not a string: $nameValue");
-          name = 'ชื่อไม่ถูกต้อง';
-        }
-      } else {
-        print("Document ${doc.id} does not contain 'name' field");
-        name = 'ไม่มีชื่อ';
-      }
-
-      return Cat(
-        id: doc.id,
-        name: name,
-        breed: data['breed'] as String? ?? 'ไม่ทราบ',
-        imagePath: data['imagePath'] as String? ?? '',
-        birthDate: data['birthDate'] as Timestamp?,
-        vaccinations: data['vaccinations'] as String? ?? '',
-        description: data['description'] as String? ?? '',
-        isForSitting: data['isForSitting'] as bool? ?? false,
-        sittingStatus: data['sittingStatus'] as String?,
-        lastSittingDate: data['lastSittingDate'] as Timestamp?,
-      );
-    } catch (e) {
-      print("Error in Cat.fromFirestore for document ${doc.id}: $e");
-      return Cat(
-        id: doc.id,
-        name:
-            'Error: ${e.toString().substring(0, min(20, e.toString().length))}',
-        breed: 'Error',
-        imagePath: '',
-        vaccinations: '',
-        description: '',
-      );
-    }
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    return Cat(
+      id: doc.id,
+      name: data['name'] ?? '',
+      breed: data['breed'] ?? '',
+      imagePath: data['imagePath'] ?? '',
+      birthDate: data['birthDate'],
+      vaccinations: data['vaccinations'] ?? '',
+      description: data['description'] ?? '',
+      isForSitting: data['isForSitting'] ?? false,
+      sittingStatus: data['sittingStatus'],
+      lastSittingDate: data['lastSittingDate'],
+    );
   }
 
-  // เพิ่ม method นี้เพื่อดีบัก
-  @override
-  String toString() {
-    return 'Cat{id: $id, name: $name, breed: $breed, vaccinations: $vaccinations}';
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'breed': breed,
+      'imagePath': imagePath,
+      'birthDate': birthDate,
+      'vaccinations': vaccinations,
+      'description': description,
+      'isForSitting': isForSitting,
+      'sittingStatus': sittingStatus,
+      'lastSittingDate': lastSittingDate,
+    };
+  }
+
+  // สร้าง Cat ตัวใหม่โดยอัพเดทฟิลด์บางตัว
+  Cat copyWith({
+    bool? isForSitting,
+    String? sittingStatus,
+    Timestamp? lastSittingDate,
+  }) {
+    return Cat(
+      id: id,
+      name: name,
+      breed: breed,
+      imagePath: imagePath,
+      birthDate: birthDate,
+      vaccinations: vaccinations,
+      description: description,
+      isForSitting: isForSitting ?? this.isForSitting,
+      sittingStatus: sittingStatus ?? this.sittingStatus,
+      lastSittingDate: lastSittingDate ?? this.lastSittingDate,
+    );
   }
 }

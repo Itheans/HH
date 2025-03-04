@@ -174,24 +174,6 @@ class _CatDetailsPageState extends State<CatDetailsPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildActionButton(
-                      Icons.edit,
-                      'แก้ไขข้อมูล',
-                      () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CatEditPage(cat: currentCat),
-                          ),
-                        ).then((updatedCat) {
-                          if (updatedCat != null) {
-                            setState(() {
-                              currentCat = updatedCat;
-                            });
-                          }
-                        });
-                      },
-                    ),
-                    _buildActionButton(
                       Icons.medical_services,
                       'Health Records',
                       () {
