@@ -48,9 +48,11 @@ class _Payment2State extends State<Payment2> {
   Future<void> _loadUserData() async {
     setState(() => isLoading = true);
     try {
+      // ดึงข้อมูลจาก SharedPreferences
       wallet = await SharedPreferenceHelper().getUserWallet();
       id = await SharedPreferenceHelper().getUserId();
 
+      // ถ้าไม่มีข้อมูลใน SharedPreferences ให้ดึงจาก Firestore
       if (wallet == null || wallet!.isEmpty) {
         if (_currentUser != null) {
           DocumentSnapshot userDoc =
@@ -62,16 +64,30 @@ class _Payment2State extends State<Payment2> {
             wallet = userData?['wallet'] ?? "0";
             await SharedPreferenceHelper().saveUserWallet(wallet!);
           } else {
-            wallet = "0";
+            // ถ้ายังไม่มีข้อมูล ให้คำนวณรายได้ทั้งหมด
+            await _calculateTotalEarnings();
+            wallet = totalEarnings.toStringAsFixed(0);
+
+            // บันทึกค่าลง Firestore
+            await _firestore
+                .collection('users')
+                .doc(_currentUser!.uid)
+                .update({'wallet': wallet});
+
+            // บันทึกลง SharedPreferences
             await SharedPreferenceHelper().saveUserWallet(wallet!);
           }
         } else {
           wallet = "0";
         }
       }
+
+      // อัพเดต totalEarnings เพื่อแสดงในหน้าจอ
+      totalEarnings = double.tryParse(wallet!) ?? 0;
     } catch (e) {
       print("Error loading user data: $e");
       wallet = "0";
+      totalEarnings = 0;
     } finally {
       setState(() => isLoading = false);
     }
@@ -103,6 +119,22 @@ class _Payment2State extends State<Payment2> {
     try {
       if (_currentUser == null) return;
 
+      // ดึงข้อมูลผู้ใช้ - เพื่อเช็คยอดเงินที่บันทึกไว้
+      final userDoc =
+          await _firestore.collection('users').doc(_currentUser!.uid).get();
+
+      double currentBalance = 0;
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData = userDoc.data();
+        if (userData != null && userData.containsKey('wallet')) {
+          String walletStr = userData['wallet'] ?? "0";
+          currentBalance = double.tryParse(walletStr) ?? 0;
+        }
+      }
+
+      // ดึงข้อมูลรายได้ทั้งหมดจากการจองทุกสถานะ
+      double totalRevenue = 0;
+
       // ดึงข้อมูลการจองที่สถานะ 'completed'
       final completedSnapshot = await _firestore
           .collection('bookings')
@@ -117,39 +149,32 @@ class _Payment2State extends State<Payment2> {
           .where('status', isEqualTo: 'accepted')
           .get();
 
-      // คำนวณรายได้ทั้งหมด
-      double earnings = 0;
-
-      // จากงานที่เสร็สิ้นแล้ว
+      // คำนวณรายได้ทั้งหมด (ยอดรวม)
       for (var doc in completedSnapshot.docs) {
         final data = doc.data();
         if (data.containsKey('totalPrice')) {
-          earnings += (data['totalPrice'] as num).toDouble();
+          totalRevenue += (data['totalPrice'] as num).toDouble();
         }
       }
 
-      // จากงานที่กำลังดำเนินการ
       for (var doc in acceptedSnapshot.docs) {
         final data = doc.data();
         if (data.containsKey('totalPrice')) {
-          earnings += (data['totalPrice'] as num).toDouble();
+          totalRevenue += (data['totalPrice'] as num).toDouble();
         }
       }
 
-      // อัปเดตค่า wallet ให้เท่ากับรายได้ทั้งหมด
-      wallet = earnings.toStringAsFixed(0);
+      // ใช้ยอดเงินจาก Firestore (เป็นยอดที่หักการถอนแล้ว)
+      // แต่ตรวจสอบว่าไม่น้อยกว่ายอดรวมทั้งหมด
+      double finalBalance = currentBalance;
 
-      // อัปเดต wallet ใน Firestore
-      await _firestore
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .update({'wallet': wallet});
-
-      // อัปเดต SharedPreferences
-      await SharedPreferenceHelper().saveUserWallet(wallet!);
+      // ถ้าไม่เคยมีการถอนเงิน ใช้ยอด totalRevenue
+      if (finalBalance == 0 && totalRevenue > 0) {
+        finalBalance = totalRevenue;
+      }
 
       setState(() {
-        totalEarnings = earnings;
+        totalEarnings = finalBalance;
       });
     } catch (e) {
       print("Error calculating total earnings: $e");
@@ -327,14 +352,9 @@ class _Payment2State extends State<Payment2> {
 
       // คำนวณยอดเงินใหม่หลังจากถอน
       double newEarnings = totalEarnings - amount;
-      wallet = newEarnings.toStringAsFixed(0);
+      if (newEarnings < 0) newEarnings = 0; // ป้องกันยอดติดลบ
 
-      // อัพเดต SharedPreferences
-      try {
-        await SharedPreferenceHelper().saveUserWallet(wallet!);
-      } catch (e) {
-        print("Error saving to SharedPreferences: $e");
-      }
+      wallet = newEarnings.toStringAsFixed(0);
 
       // อัพเดต Firestore
       try {
@@ -344,6 +364,13 @@ class _Payment2State extends State<Payment2> {
             .update({'wallet': wallet});
       } catch (e) {
         print("Error updating Firestore wallet: $e");
+      }
+
+      // อัพเดต SharedPreferences
+      try {
+        await SharedPreferenceHelper().saveUserWallet(wallet!);
+      } catch (e) {
+        print("Error saving to SharedPreferences: $e");
       }
 
       // บันทึกประวัติการทำธุรกรรม
@@ -356,8 +383,8 @@ class _Payment2State extends State<Payment2> {
           'amount': amount,
           'type': 'withdraw',
           'timestamp': FieldValue.serverTimestamp(),
-          'status': 'processing',
-          'description': 'Withdraw to bank account',
+          'status': 'completed', // เปลี่ยนจาก processing เป็น completed
+          'description': 'ถอนเงินไปยังบัญชีธนาคาร',
         });
       } catch (e) {
         print("Error adding transaction: $e");
