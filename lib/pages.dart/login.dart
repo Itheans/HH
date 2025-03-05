@@ -268,7 +268,21 @@ class _LoginState extends State<LogIn> {
                     },
                     child: Text("Don't have an account? Sign Up",
                         style: AppWidget.LightTextFeildStyle()),
-                  )
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(context, '/admin');
+                    },
+                    child: Text(
+                      "Admin Login",
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
