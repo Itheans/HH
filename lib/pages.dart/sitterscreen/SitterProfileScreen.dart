@@ -390,7 +390,7 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
                     sitterId: widget.sitterId,
                     selectedDates: widget.targetDates,
                     catIds: widget.catIds, // Add the required catIds parameter
-                    pricePerDay: _sitterData!['pricePerDay'] ?? 35.0,
+                    pricePerDay: _sitterData!['pricePerDay'] ?? 50.0,
                   ),
                 ),
               );

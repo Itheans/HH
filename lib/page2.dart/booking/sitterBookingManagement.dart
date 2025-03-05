@@ -52,26 +52,17 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
           .where('status', isEqualTo: 'accepted')
           .get();
 
-      // ดึงข้อมูลผู้ใช้จาก Firestore เพื่อดึงยอด wallet ล่าสุด
-      final userDoc =
-          await _firestore.collection('users').doc(currentUser.uid).get();
-
-      // ดึงข้อมูล wallet จาก document
-      String walletStr = "0";
-      if (userDoc.exists) {
-        Map<String, dynamic>? userData = userDoc.data();
-        if (userData != null && userData.containsKey('wallet')) {
-          walletStr = userData['wallet'] ?? "0";
-        }
+      // คำนวณรายได้ทั้งหมด
+      double total = 0;
+      for (var doc in acceptedSnapshot.docs) {
+        final data = doc.data();
+        total += (data['totalPrice'] ?? 0).toDouble();
       }
-
-      // แปลงเป็นตัวเลข
-      double walletAmount = double.tryParse(walletStr) ?? 0;
 
       setState(() {
         _pendingBookings = pendingSnapshot.docs.length;
         _acceptedBookings = acceptedSnapshot.docs.length;
-        _totalEarnings = walletAmount; // ใช้ค่า wallet จาก Firestore
+        _totalEarnings = total;
         _isLoading = false;
       });
     } catch (e) {
@@ -182,11 +173,6 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
 
   Widget _buildSummaryItem(
       String title, String value, IconData icon, Color color) {
-    // สำหรับรายได้ ให้แสดงเป็นรูปแบบเงินบาท
-    if (title.contains('รายได้')) {
-      value = '${value} ฿';
-    }
-
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -199,19 +185,19 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
           Icon(icon, color: Colors.white, size: 26),
           const SizedBox(height: 8),
           Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
             value,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
             ),
           ),
         ],
@@ -250,26 +236,6 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
               builder: (context) => ScheduleIncomePage(),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-
-        // ตัวเลือกการให้บริการ
-        _buildOptionCard(
-          'วันที่ให้บริการ',
-          'กำหนดวันและเวลาที่คุณสามารถให้บริการได้',
-          Icons.event_available,
-          Colors.green,
-          () => Navigator.pushNamed(context, '/workdate'),
-        ),
-        const SizedBox(height: 16),
-
-        // ตั้งค่าตำแหน่งที่อยู่
-        _buildOptionCard(
-          'ตั้งค่าตำแหน่งที่อยู่',
-          'กำหนดพื้นที่ให้บริการของคุณ',
-          Icons.location_on,
-          Colors.purple,
-          () => Navigator.pushNamed(context, '/location'),
         ),
       ],
     );

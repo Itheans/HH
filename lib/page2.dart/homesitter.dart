@@ -505,69 +505,6 @@ class _Home2State extends State<Home2> {
       },
     );
   }
-
-  Widget _buildSummarySection() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.teal.shade400, Colors.teal.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.teal.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'สรุปข้อมูลการจอง',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSummaryItem(
-                  'รอยืนยัน',
-                  _pendingBookings.toString(),
-                  Icons.pending_actions,
-                  Colors.orange,
-                ),
-              ),
-              Expanded(
-                child: _buildSummaryItem(
-                  'ยอมรับแล้ว',
-                  _acceptedBookings.toString(),
-                  Icons.check_circle,
-                  Colors.green,
-                ),
-              ),
-              Expanded(
-                child: _buildSummaryItem(
-                  'รายได้',
-                  totalEarnings.toStringAsFixed(0),
-                  Icons.attach_money,
-                  Colors.amber,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 enum TaskType { cat, paw, backpack, ball, booking }

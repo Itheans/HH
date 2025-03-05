@@ -33,6 +33,18 @@ class _Payment2State extends State<Payment2> {
     _loadCompletedJobs();
   }
 
+  Future<bool> _checkFirestoreConnection() async {
+    try {
+      await _firestore.collection('test').doc('connection').set({
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      print("Firestore connection error: $e");
+      return false;
+    }
+  }
+
   Future<void> _loadUserData() async {
     setState(() => isLoading = true);
     try {
@@ -108,7 +120,7 @@ class _Payment2State extends State<Payment2> {
       // คำนวณรายได้ทั้งหมด
       double earnings = 0;
 
-      // จากงานที่เสร็จสิ้นแล้ว
+      // จากงานที่เสร็สิ้นแล้ว
       for (var doc in completedSnapshot.docs) {
         final data = doc.data();
         if (data.containsKey('totalPrice')) {
@@ -233,61 +245,154 @@ class _Payment2State extends State<Payment2> {
     // เรียกฟังก์ชันคำนวณรายได้ใหม่ก่อนถอนเงิน
     await _calculateTotalEarnings();
 
+    if (!mounted) return;
+
     // แสดงหน้าต่างให้ใส่จำนวนเงินที่ต้องการถอน
     TextEditingController amountController = TextEditingController();
 
     // ตั้งค่าเริ่มต้นให้เป็นยอดรายได้ทั้งหมด
     amountController.text = totalEarnings.toStringAsFixed(0);
 
-    showDialog(
+    // ใช้ showDialog แบบปลอดภัยมากขึ้น
+    await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('ถอนเงิน'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'จำนวนเงินที่ต้องการถอน',
-                hintText: 'ยืนยันจำนวนเงินที่ต้องการถอน',
-                prefixText: '฿ ',
+      barrierDismissible: false, // ป้องกันการปิดโดยคลิกด้านนอก
+      builder: (dialogContext) {
+        // ใช้ dialogContext แทน context
+        return AlertDialog(
+          title: const Text('ถอนเงิน'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'จำนวนเงินที่ต้องการถอน',
+                  hintText: 'ยืนยันจำนวนเงินที่ต้องการถอน',
+                  prefixText: '฿ ',
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                // ปิด dialog โดยไม่ทำอะไรต่อ
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('ยกเลิก'),
+            ),
+            TextButton(
+              onPressed: () {
+                // ตรวจสอบความถูกต้องของข้อมูล
+                final amount = int.tryParse(amountController.text);
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                        content: Text('กรุณากรอกจำนวนเงินที่ถูกต้อง')),
+                  );
+                  return;
+                }
+
+                if (amount > totalEarnings) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
+                  );
+                  return;
+                }
+
+                // ปิด dialog และดำเนินการถอนเงิน
+                Navigator.of(dialogContext).pop();
+
+                // เรียกใช้ฟังก์ชันถอนเงินภายนอก dialog
+                _confirmWithdrawal(amount);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.green,
+              ),
+              child: const Text('ยืนยัน'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('ยกเลิก'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = int.tryParse(amountController.text);
-              if (amount == null || amount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('กรุณากรอกจำนวนเงิน')),
-                );
-                return;
-              }
-
-              if (amount > totalEarnings) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
-                );
-                return;
-              }
-
-              Navigator.pop(context);
-              await _processWithdrawal(amount);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('ยืนยัน'),
-          ),
-        ],
-      ),
+        );
+      },
     );
+  }
+
+// ฟังก์ชันใหม่เพื่อยืนยันการถอนเงิน
+  Future<void> _confirmWithdrawal(int amount) async {
+    try {
+      setState(() => isLoading = true);
+
+      // คำนวณยอดเงินใหม่หลังจากถอน
+      double newEarnings = totalEarnings - amount;
+      wallet = newEarnings.toStringAsFixed(0);
+
+      // อัพเดต SharedPreferences
+      try {
+        await SharedPreferenceHelper().saveUserWallet(wallet!);
+      } catch (e) {
+        print("Error saving to SharedPreferences: $e");
+      }
+
+      // อัพเดต Firestore
+      try {
+        await _firestore
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .update({'wallet': wallet});
+      } catch (e) {
+        print("Error updating Firestore wallet: $e");
+      }
+
+      // บันทึกประวัติการทำธุรกรรม
+      try {
+        await _firestore
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .collection('transactions')
+            .add({
+          'amount': amount,
+          'type': 'withdraw',
+          'timestamp': FieldValue.serverTimestamp(),
+          'status': 'processing',
+          'description': 'Withdraw to bank account',
+        });
+      } catch (e) {
+        print("Error adding transaction: $e");
+      }
+
+      // อัพเดต state
+      if (mounted) {
+        setState(() {
+          totalEarnings = newEarnings;
+          isLoading = false;
+        });
+
+        // แสดงข้อความสำเร็จ
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ถอนเงินจำนวน ฿$amount สำเร็จ'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // รีโหลดข้อมูล
+        _loadTransactions();
+      }
+    } catch (e) {
+      print("Error in withdrawal process: $e");
+      if (mounted) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาดในการถอนเงิน: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _processWithdrawal(int amount) async {
@@ -296,32 +401,22 @@ class _Payment2State extends State<Payment2> {
     setState(() => isLoading = true);
 
     try {
-      // ตรวจสอบว่ายอดถอนไม่เกินรายได้ทั้งหมด
-      if (amount > totalEarnings) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
-        );
-        setState(() => isLoading = false);
-        return;
-      }
-
       // คำนวณยอดเงินใหม่หลังจากถอน
       double newEarnings = totalEarnings - amount;
       wallet = newEarnings.toStringAsFixed(0);
 
-      // อัปเดต SharedPreferences
+      // อัพเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(wallet!);
 
-      // อัปเดต Firestore
-      await _firestore
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .update({'wallet': wallet});
-
-      // อัปเดตค่า totalEarnings ในหน้าจอ
-      setState(() {
-        totalEarnings = newEarnings;
-      });
+      // อัพเดต Firestore ภายใน try-catch
+      try {
+        await _firestore
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .update({'wallet': wallet});
+      } catch (e) {
+        print("Error updating Firestore: $e");
+      }
 
       // บันทึกประวัติการทำธุรกรรม
       await _firestore
@@ -332,7 +427,7 @@ class _Payment2State extends State<Payment2> {
         'amount': amount,
         'type': 'withdraw',
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'processing', // ต้องรอการตรวจสอบจากแอดมิน
+        'status': 'processing',
         'description': 'Withdraw to bank account',
       });
 
@@ -344,8 +439,49 @@ class _Payment2State extends State<Payment2> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      // อัพเดตค่า totalEarnings ในหน้าจอ
+      if (mounted) {
+        setState(() {
+          totalEarnings = newEarnings;
+        });
+      }
+
       // โหลดข้อมูลธุรกรรมใหม่
       _loadTransactions();
+
+      // แสดงข้อความสำเร็จ
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ถอนเงินจำนวน ฿$amount สำเร็จ'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // บอกหน้าก่อนหน้าว่ามีการเปลี่ยนแปลง
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      print("Error processing withdrawal: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleWithdrawal(int amount) async {
+    if (_currentUser == null) return;
+
+    setState(() => isLoading = true);
+
+    try {
+      // โค้ดอื่นๆ คงเดิม
 
       // แสดงข้อความสำเร็จ
       ScaffoldMessenger.of(context).showSnackBar(
@@ -355,15 +491,21 @@ class _Payment2State extends State<Payment2> {
         ),
       );
 
-      // กลับไปยังหน้าจัดการการจอง เพื่อให้ข้อมูลอัปเดต
-      Navigator.pop(context);
+      // ตรวจสอบว่า context ยังใช้ได้อยู่หรือไม่
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       print("Error processing withdrawal: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error processing withdrawal: ${e.toString()}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
+        );
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
