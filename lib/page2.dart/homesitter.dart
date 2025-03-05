@@ -299,7 +299,7 @@ class _Home2State extends State<Home2> {
             context,
             MaterialPageRoute(builder: (context) => CatSearchPage()),
           );
-        }, 'แมวของคุณ'),
+        }, 'แมวที่รับฝาก'),
         _buildTaskItem('images/paw.png', 'Sitter', paw, () {
           _updateTaskState(TaskType.paw);
           Navigator.push(

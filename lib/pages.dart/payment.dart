@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:myproject/services/shared_pref.dart';
@@ -26,61 +25,35 @@ class _PaymentState extends State<Payment> {
   final List<String> _suggestedAmounts = ["50", "100", "200", "500"];
 
   // ดึงข้อมูล shared preferences
-  Future<void> getthesharedpref() async {
+  getthesharedpref() async {
     try {
-      // ดึง ID ก่อนเพื่อใช้ในการดึงข้อมูลจาก Firestore
+      wallet = await SharedPreferenceHelper().getUserWallet();
+      // ถ้าค่า wallet เป็น null หรือค่าว่าง ให้กำหนดเป็น "0"
+      if (wallet == null || wallet!.isEmpty) {
+        wallet = "0";
+        // บันทึกค่าเริ่มต้นลงใน SharedPreferences
+        await SharedPreferenceHelper().saveUserWallet("0");
+      }
       id = await SharedPreferenceHelper().getUserId();
-
-      // ดึงข้อมูล wallet จาก Firestore แทนที่จะอ่านจาก SharedPreferences
-      if (id != null && id!.isNotEmpty) {
-        DocumentSnapshot userDoc =
-            await FirebaseFirestore.instance.collection('users').doc(id).get();
-
-        if (userDoc.exists) {
-          Map<String, dynamic>? userData =
-              userDoc.data() as Map<String, dynamic>?;
-
-          // อ่านค่า wallet จาก Firestore
-          wallet = userData?['wallet']?.toString() ?? '0';
-
-          // บันทึกค่าลงใน SharedPreferences เพื่อให้ตรงกัน
-          await SharedPreferenceHelper().saveUserWallet(wallet ?? '0');
-        } else {
-          wallet = '0';
-          // สร้างฟิลด์ wallet ใน Firestore หากยังไม่มี
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(id)
-              .update({'wallet': '0'});
-          await SharedPreferenceHelper().saveUserWallet('0');
-        }
-      } else {
-        wallet = '0';
-        await SharedPreferenceHelper().saveUserWallet('0');
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
+      setState(() {});
     } catch (e) {
       // จัดการกับข้อผิดพลาด
       print('Error getting shared preferences: $e');
       // กำหนดค่าเริ่มต้นในกรณีที่เกิดข้อผิดพลาด
       wallet = "0";
-      if (mounted) {
-        setState(() {});
-      }
+      setState(() {});
     }
   }
 
   ontheload() async {
     await getthesharedpref();
+    setState(() {});
   }
 
   @override
   void initState() {
-    super.initState();
     ontheload();
+    super.initState();
   }
 
   Map<String, dynamic>? paymentIntent;
@@ -142,19 +115,9 @@ class _PaymentState extends State<Payment> {
       // แสดง payment sheet
       await Stripe.instance.presentPaymentSheet();
 
-      // คำนวณยอดเงินใหม่
-      int currentBalance = int.parse(wallet ?? '0');
-      int amountToAdd = int.parse(amount);
-      int newBalance = currentBalance + amountToAdd;
-      wallet = newBalance.toString();
-
-      // บันทึกยอดเงินใหม่ลงใน Firestore
-      await updateWalletBalance(newBalance);
-
-      // อัพเดท UI
-      if (mounted) {
-        setState(() {});
-      }
+      // อัพเดท wallet หลังจากชำระเงินสำเร็จ
+      add = int.parse(wallet!) + int.parse(amount);
+      await SharedPreferenceHelper().saveUserWallet(add.toString());
 
       // แสดงข้อความสำเร็จ
       if (!mounted) return true;
@@ -162,6 +125,9 @@ class _PaymentState extends State<Payment> {
         content: Text('ชำระเงินสำเร็จ เติมเงิน ฿$amount ในกระเป๋าเงิน'),
         backgroundColor: Colors.green,
       ));
+
+      // อัพเดทค่า wallet ในหน้าจอ
+      await getthesharedpref();
 
       return true;
     } catch (e) {
@@ -182,29 +148,6 @@ class _PaymentState extends State<Payment> {
       return false;
     } finally {
       setState(() => _isLoading = false);
-    }
-  }
-
-  // ฟังก์ชันอัพเดทยอดเงินใน Firestore และ SharedPreferences
-  Future<void> updateWalletBalance(int newBalance) async {
-    try {
-      if (id != null && id!.isNotEmpty) {
-        // อัพเดทใน Firestore
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(id)
-            .update({'wallet': newBalance.toString()});
-
-        // อัพเดทใน SharedPreferences
-        await SharedPreferenceHelper().saveUserWallet(newBalance.toString());
-
-        print('บันทึกยอดเงินใหม่ ฿$newBalance สำเร็จ');
-      } else {
-        print('ไม่สามารถบันทึกยอดเงินได้: ไม่พบ ID ผู้ใช้');
-      }
-    } catch (e) {
-      print('เกิดข้อผิดพลาดในการบันทึกยอดเงิน: $e');
-      throw Exception('ไม่สามารถบันทึกยอดเงินได้: $e');
     }
   }
 
@@ -238,9 +181,6 @@ class _PaymentState extends State<Payment> {
           'method': 'stripe',
           'timestamp': FieldValue.serverTimestamp(),
         });
-
-        // อัพเดทข้อมูลใหม่อีกครั้งเพื่อความแน่ใจ
-        await getthesharedpref();
       } catch (e) {
         print('Error saving payment history: $e');
       }
@@ -250,13 +190,6 @@ class _PaymentState extends State<Payment> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'กระเป๋าเงิน',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.teal,
-      ),
       body: wallet == null
           ? Center(child: CircularProgressIndicator())
           : Container(
@@ -264,39 +197,70 @@ class _PaymentState extends State<Payment> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ส่วนแสดงยอดเงิน
+                    // ส่วนหัว
                     Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(20),
-                      margin: EdgeInsets.all(16),
+                      padding: EdgeInsets.only(
+                          top: 50, left: 20, right: 20, bottom: 20),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.teal,
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(30),
+                          bottomRight: Radius.circular(30),
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 10,
-                            spreadRadius: 5,
                             offset: Offset(0, 5),
                           ),
                         ],
                       ),
                       child: Column(
                         children: [
-                          Text(
-                            "ยอดเงินคงเหลือ",
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              fontSize: 16,
+                          Center(
+                            child: Text(
+                              "กระเป๋าเงิน",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                          SizedBox(height: 10),
-                          Text(
-                            "฿${wallet!}",
-                            style: TextStyle(
-                              color: Colors.teal,
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
+                          SizedBox(height: 20),
+                          Container(
+                            padding: EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  spreadRadius: 5,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  "ยอดเงินคงเหลือ",
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  "฿${wallet!}",
+                                  style: TextStyle(
+                                    color: Colors.teal,
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -436,32 +400,6 @@ class _PaymentState extends State<Payment> {
                                         color: Colors.white,
                                       ),
                                     ),
-                            ),
-                          ),
-
-                          SizedBox(height: 20),
-
-                          // ปุ่มรีเฟรชยอดเงิน
-                          Center(
-                            child: TextButton.icon(
-                              onPressed: () async {
-                                // แสดง loading
-                                setState(() => _isLoading = true);
-
-                                // ดึงข้อมูลใหม่
-                                await getthesharedpref();
-
-                                // ซ่อน loading
-                                setState(() => _isLoading = false);
-
-                                // แสดงข้อความ
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text('อัปเดตยอดเงินเรียบร้อย')));
-                              },
-                              icon: Icon(Icons.refresh),
-                              label: Text('รีเฟรชยอดเงิน'),
                             ),
                           ),
 
