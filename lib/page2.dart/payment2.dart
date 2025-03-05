@@ -27,7 +27,7 @@ class _Payment2State extends State<Payment2> {
   void initState() {
     super.initState();
     _loadUserData();
-    _calculateTotalEarnings(); // เพิ่มการเรียกฟังก์ชันนี้
+    _calculateTotalEarnings(); // ตรวจสอบว่ามีการเรียกใช้ฟังก์ชันนี้
     _loadTransactions();
     _loadPendingPayments();
     _loadCompletedJobs();
@@ -124,6 +124,18 @@ class _Payment2State extends State<Payment2> {
         }
       }
 
+      // อัปเดตค่า wallet ให้เท่ากับรายได้ทั้งหมด
+      wallet = earnings.toStringAsFixed(0);
+
+      // อัปเดต wallet ใน Firestore
+      await _firestore
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .update({'wallet': wallet});
+
+      // อัปเดต SharedPreferences
+      await SharedPreferenceHelper().saveUserWallet(wallet!);
+
       setState(() {
         totalEarnings = earnings;
       });
@@ -218,8 +230,14 @@ class _Payment2State extends State<Payment2> {
   Future<void> _withdrawMoney() async {
     if (_currentUser == null) return;
 
+    // เรียกฟังก์ชันคำนวณรายได้ใหม่ก่อนถอนเงิน
+    await _calculateTotalEarnings();
+
     // แสดงหน้าต่างให้ใส่จำนวนเงินที่ต้องการถอน
     TextEditingController amountController = TextEditingController();
+
+    // ตั้งค่าเริ่มต้นให้เป็นยอดรายได้ทั้งหมด
+    amountController.text = totalEarnings.toStringAsFixed(0);
 
     showDialog(
       context: context,
@@ -254,7 +272,7 @@ class _Payment2State extends State<Payment2> {
                 return;
               }
 
-              if (amount > int.parse(wallet ?? "0")) {
+              if (amount > totalEarnings) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
                 );
@@ -278,30 +296,34 @@ class _Payment2State extends State<Payment2> {
     setState(() => isLoading = true);
 
     try {
-      // 1. อัพเดทยอดเงินใน wallet
-      final currentWallet = int.parse(wallet ?? "0");
-      final newWallet = currentWallet - amount;
-
-      if (newWallet < 0) {
+      // ตรวจสอบว่ายอดถอนไม่เกินรายได้ทั้งหมด
+      if (amount > totalEarnings) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Insufficient balance')),
+          const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
         );
         setState(() => isLoading = false);
         return;
       }
 
-      wallet = newWallet.toString();
+      // คำนวณยอดเงินใหม่หลังจากถอน
+      double newEarnings = totalEarnings - amount;
+      wallet = newEarnings.toStringAsFixed(0);
 
-      // 2. อัพเดท SharedPreferences
+      // อัปเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(wallet!);
 
-      // 3. อัพเดท Firestore
+      // อัปเดต Firestore
       await _firestore
           .collection('users')
           .doc(_currentUser!.uid)
           .update({'wallet': wallet});
 
-      // 4. บันทึกประวัติการทำธุรกรรม
+      // อัปเดตค่า totalEarnings ในหน้าจอ
+      setState(() {
+        totalEarnings = newEarnings;
+      });
+
+      // บันทึกประวัติการทำธุรกรรม
       await _firestore
           .collection('users')
           .doc(_currentUser!.uid)
@@ -314,7 +336,7 @@ class _Payment2State extends State<Payment2> {
         'description': 'Withdraw to bank account',
       });
 
-      // 5. บันทึกคำขอถอนเงิน
+      // บันทึกคำขอถอนเงิน
       await _firestore.collection('withdrawals').add({
         'userId': _currentUser!.uid,
         'amount': amount,
@@ -322,16 +344,19 @@ class _Payment2State extends State<Payment2> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 6. โหลดข้อมูลธุรกรรมใหม่
+      // โหลดข้อมูลธุรกรรมใหม่
       _loadTransactions();
 
-      // 7. แสดงข้อความสำเร็จ
+      // แสดงข้อความสำเร็จ
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Withdrawal request for ฿$amount submitted'),
           backgroundColor: Colors.green,
         ),
       );
+
+      // กลับไปยังหน้าจัดการการจอง เพื่อให้ข้อมูลอัปเดต
+      Navigator.pop(context);
     } catch (e) {
       print("Error processing withdrawal: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -363,7 +388,7 @@ class _Payment2State extends State<Payment2> {
           : RefreshIndicator(
               onRefresh: () async {
                 await _loadUserData();
-                await _calculateTotalEarnings(); // เพิ่มการเรียกฟังก์ชันนี้
+                await _calculateTotalEarnings(); // ตรวจสอบว่ามีการเรียกใช้ฟังก์ชันนี้
                 await _loadTransactions();
                 await _loadPendingPayments();
                 await _loadCompletedJobs();
@@ -446,33 +471,12 @@ class _Payment2State extends State<Payment2> {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                'เงินในระบบ: ฿${wallet ?? "0"}',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'รายได้ทั้งหมด',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            'สามารถถอนเงินได้ทั้งหมด',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 10),
         ],
@@ -499,7 +503,7 @@ class _Payment2State extends State<Payment2> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'สรุปรายได้',
+            'สรุปข้อมูลการจอง',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -507,19 +511,25 @@ class _Payment2State extends State<Payment2> {
           ),
           const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildEarningsStat(
-                'งานที่เสร็จแล้ว',
-                '${completedJobs.length}',
-                Icons.check_circle_outline,
-                Colors.green,
-              ),
-              _buildEarningsStat(
-                'รอการชำระเงิน',
+                'รอยืนยัน',
                 '${pendingPayments.length}',
                 Icons.pending_actions,
                 Colors.orange,
+              ),
+              _buildEarningsStat(
+                'ยอมรับแล้ว',
+                '${completedJobs.length}',
+                Icons.check_circle,
+                Colors.green,
+              ),
+              _buildEarningsStat(
+                'รายได้',
+                '${totalEarnings.toStringAsFixed(0)} ฿',
+                Icons.attach_money,
+                Colors.amber,
               ),
             ],
           ),

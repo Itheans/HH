@@ -25,12 +25,14 @@ class _Home2State extends State<Home2> {
       booking = false;
   String? userName;
   int pendingBookingsCount = 0;
+  double totalEarnings = 0;
 
   @override
   void initState() {
     super.initState();
     _loadUserInfo();
     _fetchPendingBookingsCount();
+    _loadEarningsData(); // เพิ่มการเรียกฟังก์ชันนี้
   }
 
   Future<void> _loadUserInfo() async {
@@ -76,6 +78,31 @@ class _Home2State extends State<Home2> {
     } catch (e) {
       print('Error fetching adopted cats: $e');
       return [];
+    }
+  }
+
+  Future<void> _loadEarningsData() async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // ดึงข้อมูลผู้ใช้จาก Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData = userDoc.data();
+        if (userData != null && userData.containsKey('wallet')) {
+          String walletStr = userData['wallet'] ?? "0";
+          setState(() {
+            totalEarnings = double.tryParse(walletStr) ?? 0;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading earnings data: $e');
     }
   }
 
@@ -476,6 +503,69 @@ class _Home2State extends State<Home2> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSummarySection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.teal.shade400, Colors.teal.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.teal.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'สรุปข้อมูลการจอง',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryItem(
+                  'รอยืนยัน',
+                  _pendingBookings.toString(),
+                  Icons.pending_actions,
+                  Colors.orange,
+                ),
+              ),
+              Expanded(
+                child: _buildSummaryItem(
+                  'ยอมรับแล้ว',
+                  _acceptedBookings.toString(),
+                  Icons.check_circle,
+                  Colors.green,
+                ),
+              ),
+              Expanded(
+                child: _buildSummaryItem(
+                  'รายได้',
+                  totalEarnings.toStringAsFixed(0),
+                  Icons.attach_money,
+                  Colors.amber,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
