@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:myproject/services/shared_pref.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:myproject/widget/widget_support.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -180,6 +181,88 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
       });
     } catch (e) {
       print('Error loading income data: $e');
+    }
+  }
+
+  Future<void> _completeBooking(String bookingId) async {
+    try {
+      // ดึงข้อมูลการจองเพื่อเอายอดเงิน
+      DocumentSnapshot bookingDoc =
+          await _firestore.collection('bookings').doc(bookingId).get();
+      if (!bookingDoc.exists) {
+        throw Exception('ไม่พบข้อมูลการจอง');
+      }
+
+      Map<String, dynamic> bookingData =
+          bookingDoc.data() as Map<String, dynamic>;
+      double bookingAmount = 0;
+      if (bookingData.containsKey('totalPrice')) {
+        bookingAmount = (bookingData['totalPrice'] as num).toDouble();
+      }
+
+      // ดึงข้อมูล wallet ปัจจุบัน
+      User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('ไม่พบข้อมูลผู้ใช้');
+      }
+
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
+
+      // คำนวณยอดเงินใหม่
+      double currentWallet = 0;
+      if (userData != null && userData.containsKey('wallet')) {
+        String walletStr = userData['wallet'] ?? "0";
+        currentWallet = double.tryParse(walletStr) ?? 0;
+      }
+
+      double newWallet = currentWallet + bookingAmount;
+      String walletStr = newWallet.toStringAsFixed(0);
+
+      // อัพเดตสถานะงานและเพิ่มยอดเงินใน wallet พร้อมกัน
+      await _firestore.runTransaction((transaction) async {
+        // อัพเดตสถานะงาน
+        transaction.update(_firestore.collection('bookings').doc(bookingId), {
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+
+        // อัพเดตยอดเงินใน wallet
+        transaction
+            .update(_firestore.collection('users').doc(currentUser.uid), {
+          'wallet': walletStr,
+        });
+      });
+
+      // บันทึกประวัติการทำธุรกรรม
+      await _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('transactions')
+          .add({
+        'amount': bookingAmount,
+        'type': 'income',
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'completed',
+        'description': 'รายได้จากการรับเลี้ยงแมว',
+        'bookingId': bookingId,
+      });
+
+      // อัพเดต SharedPreferences
+      await SharedPreferenceHelper().saveUserWallet(walletStr);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('การดูแลเสร็จสิ้นเรียบร้อยแล้ว'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Error completing booking: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+      );
     }
   }
 
