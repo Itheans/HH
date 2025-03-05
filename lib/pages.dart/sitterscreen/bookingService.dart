@@ -7,12 +7,15 @@ class BookingService {
 
   // Create a new booking with proper availability checking
   // แก้ไขฟังก์ชัน createBooking
+  // ตำแหน่งที่ต้องแก้: ส่วนประกาศฟังก์ชัน createBooking
   Future<String> createBooking({
     required String sitterId,
     required List<DateTime> dates,
     required double totalPrice,
     String? notes,
-    List<String>? catIds, // เพิ่มพารามิเตอร์นี้
+    List<String>? catIds,
+    required double currentWallet,
+    required double newWallet,
   }) async {
     try {
       // Check authentication
@@ -35,7 +38,10 @@ class BookingService {
         selectedCatIds = catsSnapshot.docs.map((doc) => doc.id).toList();
       }
 
-      // Run all checks in a transaction to ensure data consistency
+      // ใช้ค่า currentWallet และ newWallet ที่ส่งมาแทนการตรวจสอบใหม่
+      String newWalletStr = newWallet.toStringAsFixed(0);
+
+      // สร้างการจองและหักเงินในคราวเดียวกันโดยใช้ Transaction
       return await _firestore.runTransaction<String>((transaction) async {
         // Check if sitter exists
         final sitterDoc =
@@ -66,7 +72,7 @@ class BookingService {
           'status': 'pending',
           'totalPrice': totalPrice,
           'notes': notes,
-          'catIds': selectedCatIds, // เพิ่มข้อมูล catIds
+          'catIds': selectedCatIds,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
@@ -81,6 +87,26 @@ class BookingService {
 
         transaction
             .update(sitterDoc.reference, {'availableDates': updatedDates});
+
+        // หักเงินจากกระเป๋าเงินของผู้ใช้
+        transaction.update(_firestore.collection('users').doc(currentUser.uid),
+            {'wallet': newWalletStr});
+
+        // บันทึกประวัติธุรกรรม
+        DocumentReference transactionRef = _firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('transactions')
+            .doc();
+
+        transaction.set(transactionRef, {
+          'amount': totalPrice,
+          'type': 'payment',
+          'description': 'ชำระค่าบริการรับเลี้ยงแมว',
+          'status': 'completed',
+          'timestamp': FieldValue.serverTimestamp(),
+          'bookingId': bookingRef.id
+        });
 
         return bookingRef.id;
       });

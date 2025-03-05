@@ -83,18 +83,20 @@ class SharedPreferenceHelper {
     return await prefs.clear(); // Clear all data
   }
 
+  // ตำแหน่งที่ต้องแก้ไข: ฟังก์ชัน saveUserWallet และ getUserWallet
+
   Future<bool> saveUserWallet(String amount) async {
-    print('Saving wallet amount: $amount');
+    print('SharedPreferenceHelper: กำลังบันทึกยอดเงิน: $amount');
     SharedPreferences prefs = await SharedPreferences.getInstance();
     bool result = await prefs.setString(userWalletKey, amount);
-    print('Save result: $result');
+    print('SharedPreferenceHelper: บันทึกยอดเงินสำเร็จ: $result');
     return result;
   }
 
   Future<String?> getUserWallet() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? wallet = prefs.getString(userWalletKey);
-    print('Retrieved wallet amount: $wallet');
+    print('SharedPreferenceHelper: ดึงยอดเงินจาก SharedPreferences: $wallet');
     return wallet;
   }
 

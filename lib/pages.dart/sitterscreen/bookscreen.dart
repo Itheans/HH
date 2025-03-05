@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:myproject/pages.dart/sitterscreen/bookingService.dart';
+import 'package:myproject/services/shared_pref.dart';
 
 class BookingScreen extends StatefulWidget {
   final String sitterId;
@@ -36,6 +37,11 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   // ฟังก์ชันสำหรับการยืนยันการจอง
+  // ตำแหน่งที่ต้องแก้: ฟังก์ชัน _confirmBooking() ใน class _BookingScreenState
+// แก้ไขทั้งฟังก์ชันเป็น:
+  // ตำแหน่งที่ต้องแก้: ฟังก์ชัน _confirmBooking() ใน class _BookingScreenState
+// เพิ่มโค้ดด้านล่างนี้เพื่อดีบักปัญหาและทำให้การตรวจสอบยอดเงินถูกต้อง:
+
   Future<void> _confirmBooking() async {
     if (_isLoading) return;
 
@@ -59,21 +65,119 @@ class _BookingScreenState extends State<BookingScreen> {
         throw Exception("กรุณาเลือกแมวที่ต้องการฝากเลี้ยง");
       }
 
+      // คำนวณค่าบริการทั้งหมด
+      final totalPrice = widget.pricePerDay * widget.selectedDates.length;
+
+      // ดีบัก: แสดงค่าบริการที่จะชำระ
+      print("ค่าบริการที่ต้องชำระ: $totalPrice");
+
+      // ตรวจสอบยอดเงินในกระเป๋าเงินของผู้ใช้ - ทั้งจาก SharedPreferences และ Firestore
+      double walletFromPrefs = 0;
+      String? walletStrFromPrefs =
+          await SharedPreferenceHelper().getUserWallet();
+      if (walletStrFromPrefs != null && walletStrFromPrefs.isNotEmpty) {
+        walletFromPrefs = double.tryParse(walletStrFromPrefs) ?? 0;
+      }
+
+      // ดีบัก: แสดงยอดเงินจาก SharedPreferences
+      print("ยอดเงินจาก SharedPreferences: $walletFromPrefs");
+
+      // ดึงข้อมูลจาก Firestore
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (!userDoc.exists) {
+        // ถ้าไม่มีข้อมูลใน Firestore ให้ใช้ค่าจาก SharedPreferences
+        if (walletFromPrefs < totalPrice) {
+          throw Exception(
+              "ยอดเงินในกระเป๋าไม่เพียงพอ กรุณาเติมเงิน (ยอดในกระเป๋า: $walletFromPrefs, ค่าบริการ: $totalPrice)");
+        }
+
+        // สร้างข้อมูล wallet ใน Firestore ถ้ายังไม่มี
+        await _firestore.collection('users').doc(user.uid).set(
+            {'wallet': walletFromPrefs.toStringAsFixed(0)},
+            SetOptions(merge: true));
+
+        // ใช้ค่าจาก SharedPreferences เป็นยอดปัจจุบัน
+        double currentWallet = walletFromPrefs;
+        double newWallet = currentWallet - totalPrice;
+        String newWalletStr = newWallet.toStringAsFixed(0);
+
+        // Using the BookingService to handle the transaction
+        final bookingId = await _bookingService.createBooking(
+            sitterId: widget.sitterId,
+            dates: widget.selectedDates,
+            totalPrice: totalPrice,
+            notes: _notesController.text.trim(),
+            catIds: catIds,
+            currentWallet: currentWallet,
+            newWallet: newWallet);
+
+        // อัพเดตค่า wallet ใน SharedPreferences
+        await SharedPreferenceHelper().saveUserWallet(newWalletStr);
+
+        if (!mounted) return;
+
+        // Show success message and navigate back
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'จองสำเร็จ หักเงินจากกระเป๋าเงินแล้ว ฿$totalPrice บาท (เหลือ ฿$newWalletStr)')),
+        );
+        Navigator.of(context).pop();
+
+        return;
+      }
+
+      // มีข้อมูลใน Firestore
+      final userData = userDoc.data();
+      String walletStr = userData?['wallet'] ?? "0";
+      double walletFromFirestore = double.tryParse(walletStr) ?? 0;
+
+      // ดีบัก: แสดงยอดเงินจาก Firestore
+      print("ยอดเงินจาก Firestore: $walletFromFirestore");
+
+      // ใช้ยอดเงินที่มากกว่าระหว่าง SharedPreferences และ Firestore
+      // เพื่อป้องกันการสูญเสียเงินจากการซิงค์ข้อมูลผิดพลาด
+      double currentWallet = walletFromFirestore > walletFromPrefs
+          ? walletFromFirestore
+          : walletFromPrefs;
+
+      // ดีบัก: แสดงยอดเงินที่จะใช้
+      print("ยอดเงินที่จะใช้ในการตรวจสอบ: $currentWallet");
+
+      // ตรวจสอบว่ามีเงินเพียงพอหรือไม่
+      if (currentWallet < totalPrice) {
+        throw Exception(
+            "ยอดเงินในกระเป๋าไม่เพียงพอ กรุณาเติมเงิน (ยอดในกระเป๋า: $currentWallet, ค่าบริการ: $totalPrice)");
+      }
+
+      // คำนวณยอดเงินใหม่หลังหักค่าบริการ
+      double newWallet = currentWallet - totalPrice;
+      String newWalletStr = newWallet.toStringAsFixed(0);
+
+      // ดีบัก: แสดงยอดเงินคงเหลือหลังหักค่าบริการ
+      print("ยอดเงินคงเหลือหลังหักค่าบริการ: $newWallet");
+
       // Using the BookingService to handle the transaction
       final bookingId = await _bookingService.createBooking(
-        sitterId: widget.sitterId,
-        dates: widget.selectedDates,
-        totalPrice: widget.pricePerDay * widget.selectedDates.length,
-        notes: _notesController.text.trim(),
-        catIds: catIds,
-        // เพิ่มพารามิเตอร์นี้
-      );
+          sitterId: widget.sitterId,
+          dates: widget.selectedDates,
+          totalPrice: totalPrice,
+          notes: _notesController.text.trim(),
+          catIds: catIds,
+          currentWallet: currentWallet,
+          newWallet: newWallet);
+
+      // อัพเดตค่า wallet ใน SharedPreferences
+      await SharedPreferenceHelper().saveUserWallet(newWalletStr);
 
       if (!mounted) return;
 
       // Show success message and navigate back
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('จองสำเร็จ')),
+        SnackBar(
+            content: Text(
+                'จองสำเร็จ หักเงินจากกระเป๋าเงินแล้ว ฿$totalPrice บาท (เหลือ ฿$newWalletStr)')),
       );
       Navigator.of(context).pop();
     } catch (e) {
@@ -188,6 +292,8 @@ class BookingService {
     required double totalPrice,
     required String notes,
     required List<String> catIds,
+    required double currentWallet,
+    required double newWallet,
   }) async {
     // Create a reference to a new document with auto-generated ID
     final bookingRef = _firestore.collection('bookings').doc();

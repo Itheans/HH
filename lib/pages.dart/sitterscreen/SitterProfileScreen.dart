@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +8,7 @@ import 'package:myproject/page2.dart/showreviwe.dart';
 import 'package:myproject/pages.dart/reviwe.dart';
 import 'package:myproject/pages.dart/sitterscreen/bookingService.dart';
 import 'package:myproject/pages.dart/sitterscreen/bookscreen.dart';
+import 'package:myproject/services/shared_pref.dart';
 
 class SitterProfileScreen extends StatefulWidget {
   final String sitterId;
@@ -378,22 +380,93 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
           ),
         ],
       ),
+      // แก้ไขส่วน bottomNavigationBar ใน build() ของ class _SitterProfileScreenState
+// แก้ไขเป็น:
+
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BookingScreen(
-                    sitterId: widget.sitterId,
-                    selectedDates: widget.targetDates,
-                    catIds: widget.catIds, // Add the required catIds parameter
-                    pricePerDay: _sitterData!['pricePerDay'] ?? 50.0,
+            onPressed: () async {
+              // ตรวจสอบยอดเงินในกระเป๋าเงินก่อนไปหน้าจอง
+              try {
+                User? currentUser = FirebaseAuth.instance.currentUser;
+                if (currentUser == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('กรุณาเข้าสู่ระบบก่อนทำการจอง')),
+                  );
+                  return;
+                }
+
+                // ดึงข้อมูลยอดเงินจาก SharedPreferences ก่อน
+                double walletFromPrefs = 0;
+                String? walletStrFromPrefs =
+                    await SharedPreferenceHelper().getUserWallet();
+                if (walletStrFromPrefs != null &&
+                    walletStrFromPrefs.isNotEmpty) {
+                  walletFromPrefs = double.tryParse(walletStrFromPrefs) ?? 0;
+                }
+
+                // ดึงข้อมูลจาก Firestore
+                DocumentSnapshot userDoc = await _firestore
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .get();
+
+                double walletFromFirestore = 0;
+                if (userDoc.exists) {
+                  final userData = userDoc.data() as Map<String, dynamic>?;
+                  if (userData != null && userData.containsKey('wallet')) {
+                    String walletStr = userData['wallet'] ?? "0";
+                    walletFromFirestore = double.tryParse(walletStr) ?? 0;
+                  }
+                }
+
+                // ใช้ยอดเงินที่มากกว่า
+                double currentWallet = walletFromFirestore > walletFromPrefs
+                    ? walletFromFirestore
+                    : walletFromPrefs;
+
+                // คำนวณราคาทั้งหมด
+                double totalPrice = (_sitterData!['pricePerDay'] ?? 50.0) *
+                    widget.targetDates.length;
+
+                // แสดงข้อมูลสำหรับดีบัก
+                print("ยอดเงินจาก SharedPreferences: $walletFromPrefs");
+                print("ยอดเงินจาก Firestore: $walletFromFirestore");
+                print("ยอดเงินที่ใช้ตรวจสอบ: $currentWallet");
+                print("ค่าบริการทั้งหมด: $totalPrice");
+
+                // ตรวจสอบว่ามีเงินเพียงพอหรือไม่
+                if (currentWallet < totalPrice) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('ยอดเงินในกระเป๋าไม่เพียงพอ กรุณาเติมเงิน ' +
+                          '(ยอดในกระเป๋า: ฿$currentWallet, ค่าบริการ: ฿$totalPrice)'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // ถ้ามีเงินเพียงพอ ไปยังหน้าจองบริการ
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookingScreen(
+                      sitterId: widget.sitterId,
+                      selectedDates: widget.targetDates,
+                      catIds: widget.catIds,
+                      pricePerDay: _sitterData!['pricePerDay'] ?? 50.0,
+                    ),
                   ),
-                ),
-              );
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
