@@ -17,11 +17,12 @@ import 'package:myproject/pages.dart/login.dart';
 import 'package:myproject/pages.dart/onboard.dart';
 import 'package:myproject/pages.dart/sigup.dart';
 import 'package:myproject/services/auth.dart';
+import 'package:myproject/widget/app_constant.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  Stripe.publishableKey = 'YOUR_PUBLISHABLE_KEY';
+  Stripe.publishableKey = publishableKey;
   runApp(const MyApp());
 }
 
