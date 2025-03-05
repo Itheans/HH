@@ -96,7 +96,13 @@ class SharedPreferenceHelper {
   Future<String?> getUserWallet() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String? wallet = prefs.getString(userWalletKey);
-    print('SharedPreferenceHelper: ดึงยอดเงินจาก SharedPreferences: $wallet');
+
+    // ถ้า wallet เป็น null หรือว่าง ให้กำหนดค่าเป็น "0"
+    if (wallet == null || wallet.isEmpty) {
+      await saveUserWallet("0");
+      return "0";
+    }
+
     return wallet;
   }
 

@@ -19,6 +19,11 @@ class DatabaseMethods {
   }
 
   Future addUser(String userId, Map<String, dynamic> userInfoMap) async {
+    // ถ้า userInfoMap ไม่มีฟิลด์ wallet ให้เพิ่มเข้าไป
+    if (!userInfoMap.containsKey('wallet')) {
+      userInfoMap['wallet'] = "0";
+    }
+
     return await FirebaseFirestore.instance
         .collection("users")
         .doc(userId)
@@ -26,6 +31,11 @@ class DatabaseMethods {
   }
 
   Future addUserDetails(Map<String, dynamic> userInfoMap, String uid) async {
+    // ถ้า userInfoMap ไม่มีฟิลด์ wallet ให้เพิ่มเข้าไป
+    if (!userInfoMap.containsKey('wallet')) {
+      userInfoMap['wallet'] = "0";
+    }
+
     return await FirebaseFirestore.instance
         .collection("users")
         .doc(uid)

@@ -42,6 +42,7 @@ class _SignUpState extends State<SignUp> {
           'photo': 'images/User.png',
           'id': uid,
           'role': role,
+          'wallet': "0",
           'SearchKey': nameController.text.substring(0, 1).toUpperCase(),
         };
 

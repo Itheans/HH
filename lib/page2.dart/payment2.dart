@@ -58,11 +58,9 @@ class _Payment2State extends State<Payment2> {
           DocumentSnapshot userDoc =
               await _firestore.collection('users').doc(_currentUser!.uid).get();
 
-          if (userDoc.exists) {
-            Map<String, dynamic>? userData =
-                userDoc.data() as Map<String, dynamic>?;
-            wallet = userData?['wallet'] ?? "0";
-            await SharedPreferenceHelper().saveUserWallet(wallet!);
+          if (wallet == null || wallet!.isEmpty) {
+            wallet = "0";
+            await SharedPreferenceHelper().saveUserWallet("0");
           } else {
             // ถ้ายังไม่มีข้อมูล ให้คำนวณรายได้ทั้งหมด
             await _calculateTotalEarnings();
