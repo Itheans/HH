@@ -58,6 +58,50 @@ class _AvailableDatesPageState extends State<AvailableDatesPage> {
     }
   }
 
+  // เพิ่มฟังก์ชันสำหรับดึงข้อมูลการจองที่กำลังดำเนินการ
+  Future<List<Map<String, dynamic>>> _getActiveBookings() async {
+    try {
+      User? currentUser = _auth.currentUser;
+      if (currentUser == null) return [];
+
+      final snapshot = await _firestore
+          .collection('bookings')
+          .where('sitterId', isEqualTo: currentUser.uid)
+          .where('status', isEqualTo: 'accepted')
+          .get();
+
+      List<Map<String, dynamic>> bookings = [];
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> booking = doc.data();
+        booking['id'] = doc.id;
+        bookings.add(booking);
+      }
+      return bookings;
+    } catch (e) {
+      print('Error getting active bookings: $e');
+      return [];
+    }
+  }
+
+// เพิ่มฟังก์ชันสำหรับทำเครื่องหมายว่างานเสร็จสิ้น
+  Future<void> _completeBooking(String bookingId) async {
+    try {
+      await _firestore.collection('bookings').doc(bookingId).update({
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('งานเสร็จสิ้นเรียบร้อยแล้ว')),
+      );
+    } catch (e) {
+      print('Error completing booking: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

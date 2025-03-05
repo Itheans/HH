@@ -196,22 +196,48 @@ class _SitterBookingRequestsScreenState
     }
   }
 
+  // ในฟังก์ชัน _completeBooking
   Future<void> _completeBooking(String bookingId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('booking_requests')
-          .doc(bookingId)
-          .update({
-        'status': 'completed',
-        'completedAt': FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('การดูแลเสร็จสิ้นเรียบร้อยแล้ว'),
-          backgroundColor: Colors.green,
+      // แสดงกล่องยืนยันก่อนทำเครื่องหมายเสร็จสิ้น
+      bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('ยืนยันการเสร็จสิ้นงาน'),
+          content:
+              const Text('คุณต้องการยืนยันว่างานนี้เสร็จสิ้นแล้วใช่หรือไม่?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+              child: const Text('ยืนยัน'),
+            ),
+          ],
         ),
       );
+
+      if (confirm == true) {
+        await FirebaseFirestore.instance
+            .collection('booking_requests')
+            .doc(bookingId)
+            .update({
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('การดูแลเสร็จสิ้นเรียบร้อยแล้ว'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       print('Error completing booking: $e');
       ScaffoldMessenger.of(context).showSnackBar(

@@ -145,6 +145,28 @@ class _BookingAcceptancePageState extends State<BookingAcceptancePage> {
     }
   }
 
+  // เพิ่มฟังก์ชัน _completeBooking ใหม่ในคลาส _BookingAcceptancePageState (เพิ่มในบรรทัดประมาณ 200)
+  Future<void> _completeBooking(String bookingId) async {
+    try {
+      await _firestore.collection('bookings').doc(bookingId).update({
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('งานเสร็จสิ้นเรียบร้อยแล้ว')),
+      );
+
+      // รีโหลดข้อมูล
+      _loadBookings();
+    } catch (e) {
+      print('Error completing booking: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+      );
+    }
+  }
+
   // แสดงรายละเอียดการจอง
   void _showBookingDetails(DocumentSnapshot booking) {
     if (!mounted) return; // เช็ค mounted ก่อนดำเนินการต่อ
@@ -388,37 +410,22 @@ class _BookingAcceptancePageState extends State<BookingAcceptancePage> {
                     ),
                   const Spacer(),
                   // ถ้าสถานะเป็น pending ให้แสดงปุ่มยอมรับและปฏิเสธ
-                  if (bookingData['status'] == 'pending')
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _updateBookingStatus(booking.id, 'rejected');
-                            },
+
+                  if (bookingData['status'] == 'accepted')
+                    Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () => _completeBooking(booking.id),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Colors.blue,
                             ),
-                            child: const Text('ปฏิเสธการจอง'),
+                            child: const Text('เสร็จสิ้น'),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _updateBookingStatus(booking.id, 'accepted');
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            child: const Text('ยอมรับการจอง'),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                 ],
               ),

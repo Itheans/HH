@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myproject/page2.dart/BookingAcceptancePage.dart';
 import 'package:myproject/page2.dart/scheduleincomepage.dart';
 import 'package:myproject/widget/widget_support.dart';
+import 'package:myproject/page2.dart/ActiveBookingsPage.dart';
 
 class SitterBookingManagement extends StatefulWidget {
   const SitterBookingManagement({Key? key}) : super(key: key);
@@ -208,7 +209,7 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
   Widget _buildManagementOptions() {
     return Column(
       children: [
-        // ตรวจสอบการจอง
+        // ตรวจสอบการจอง (รักษาคาร์ดเดิมไว้)
         _buildOptionCard(
           'การจองที่รอยืนยัน',
           'ตรวจสอบและยอมรับการจองจากลูกค้า',
@@ -224,7 +225,23 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
         ),
         const SizedBox(height: 16),
 
-        // ตารางงานและรายได้
+        // เพิ่มการ์ดใหม่สำหรับงานที่กำลังดำเนินการ
+        _buildOptionCard(
+          'งานที่กำลังดำเนินการ',
+          'จัดการงานที่กำลังดำเนินการและทำเครื่องหมายเสร็จสิ้น',
+          Icons.work,
+          Colors.green,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ActiveBookingsPage(),
+            ),
+          ).then((_) => _loadSummaryData()),
+          badge: _acceptedBookings > 0 ? _acceptedBookings.toString() : null,
+        ),
+        const SizedBox(height: 16),
+
+        // ตารางงานและรายได้ (รักษาคาร์ดเดิมไว้)
         _buildOptionCard(
           'ตารางงานและรายได้',
           'ดูตารางงานและรายได้ของคุณ',
