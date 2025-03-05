@@ -126,8 +126,7 @@ class _MyWidgetState extends State<Home> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  SelectTargetDateScreen(onDateSelected: (selectedDate) {}),
+              builder: (context) => PrepareCatsForSittingPage(),
             ),
           );
         }, 'จองบริการ'),
@@ -195,41 +194,6 @@ class _MyWidgetState extends State<Home> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // เพิ่มปุ่มเตรียมแมวสำหรับฝากเลี้ยง
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 16),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PrepareCatsForSittingPage(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.pets, color: Colors.white),
-              label: const Text(
-                'เตรียมแมวสำหรับฝากเลี้ยง',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                elevation: 3,
-              ),
-            ),
-          ),
-
           // เพิ่มปุ่มดูสถานะการฝากเลี้ยง
           Container(
             margin: const EdgeInsets.symmetric(vertical: 8),

@@ -18,6 +18,7 @@ class _Payment2State extends State<Payment2> {
   List<Map<String, dynamic>> transactions = [];
   List<Map<String, dynamic>> pendingPayments = [];
   List<Map<String, dynamic>> completedJobs = [];
+  double totalEarnings = 0; // เพิ่มตัวแปรนี้เพื่อเก็บยอดรายได้ทั้งหมด
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final User? _currentUser = FirebaseAuth.instance.currentUser;
@@ -26,6 +27,7 @@ class _Payment2State extends State<Payment2> {
   void initState() {
     super.initState();
     _loadUserData();
+    _calculateTotalEarnings(); // เพิ่มการเรียกฟังก์ชันนี้
     _loadTransactions();
     _loadPendingPayments();
     _loadCompletedJobs();
@@ -82,6 +84,51 @@ class _Payment2State extends State<Payment2> {
       });
     } catch (e) {
       print("Error loading transactions: $e");
+    }
+  }
+
+  Future<void> _calculateTotalEarnings() async {
+    try {
+      if (_currentUser == null) return;
+
+      // ดึงข้อมูลการจองที่สถานะ 'completed'
+      final completedSnapshot = await _firestore
+          .collection('bookings')
+          .where('sitterId', isEqualTo: _currentUser!.uid)
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      // ดึงข้อมูลการจองที่สถานะ 'accepted' (งานที่กำลังดำเนินการ)
+      final acceptedSnapshot = await _firestore
+          .collection('bookings')
+          .where('sitterId', isEqualTo: _currentUser!.uid)
+          .where('status', isEqualTo: 'accepted')
+          .get();
+
+      // คำนวณรายได้ทั้งหมด
+      double earnings = 0;
+
+      // จากงานที่เสร็จสิ้นแล้ว
+      for (var doc in completedSnapshot.docs) {
+        final data = doc.data();
+        if (data.containsKey('totalPrice')) {
+          earnings += (data['totalPrice'] as num).toDouble();
+        }
+      }
+
+      // จากงานที่กำลังดำเนินการ
+      for (var doc in acceptedSnapshot.docs) {
+        final data = doc.data();
+        if (data.containsKey('totalPrice')) {
+          earnings += (data['totalPrice'] as num).toDouble();
+        }
+      }
+
+      setState(() {
+        totalEarnings = earnings;
+      });
+    } catch (e) {
+      print("Error calculating total earnings: $e");
     }
   }
 
@@ -316,6 +363,7 @@ class _Payment2State extends State<Payment2> {
           : RefreshIndicator(
               onRefresh: () async {
                 await _loadUserData();
+                await _calculateTotalEarnings(); // เพิ่มการเรียกฟังก์ชันนี้
                 await _loadTransactions();
                 await _loadPendingPayments();
                 await _loadCompletedJobs();
@@ -326,6 +374,8 @@ class _Payment2State extends State<Payment2> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildEarningsCard(),
+                    const SizedBox(height: 20),
+                    _buildEarningsSummary(), // เพิ่มส่วนนี้
                     const SizedBox(height: 20),
                     if (pendingPayments.isNotEmpty)
                       _buildPendingPaymentsSection(),
@@ -373,14 +423,14 @@ class _Payment2State extends State<Payment2> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'จำนวนเงิน',
+                'รายได้จากการรับเลี้ยงแมว',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                 ),
               ),
               Icon(
-                Icons.account_balance_wallet,
+                Icons.payments,
                 color: Colors.white,
                 size: 40,
               ),
@@ -388,16 +438,126 @@ class _Payment2State extends State<Payment2> {
           ),
           const SizedBox(height: 20),
           Text(
-            '฿${wallet ?? "0"}',
+            '฿${totalEarnings.toStringAsFixed(0)}',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 36,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 23),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                'เงินในระบบ: ฿${wallet ?? "0"}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'รายได้ทั้งหมด',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
         ],
       ),
+    );
+  }
+
+  Widget _buildEarningsSummary() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'สรุปรายได้',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildEarningsStat(
+                'งานที่เสร็จแล้ว',
+                '${completedJobs.length}',
+                Icons.check_circle_outline,
+                Colors.green,
+              ),
+              _buildEarningsStat(
+                'รอการชำระเงิน',
+                '${pendingPayments.length}',
+                Icons.pending_actions,
+                Colors.orange,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEarningsStat(
+      String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
     );
   }
 

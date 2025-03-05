@@ -126,7 +126,7 @@ class _CatDetailsPageState extends State<CatDetailsPage> {
                     Padding(
                       padding: const EdgeInsets.only(left: 8, bottom: 16),
                       child: Text(
-                        'Pet Information',
+                        'ข้อมูลแมว',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -136,56 +136,34 @@ class _CatDetailsPageState extends State<CatDetailsPage> {
                     ),
                     _buildInfoRow(
                       Icons.pets,
-                      'Name',
+                      'ชื่อแมว',
                       currentCat.name,
                       Colors.orange.shade400,
                     ),
                     _buildInfoRow(
                       Icons.category,
-                      'Breed',
+                      'สายพันธุ์',
                       currentCat.breed,
                       Colors.orange.shade400,
                     ),
                     _buildInfoRow(
                       Icons.cake,
-                      'Birthday',
+                      'วันเกิดแมว',
                       currentCat.birthDate?.toDate().toString().split(' ')[0] ??
                           'Unknown',
                       Colors.orange.shade400,
                     ),
                     _buildInfoRow(
                       Icons.medical_services,
-                      'Vaccinations',
+                      'วัคซีน',
                       currentCat.vaccinations,
                       Colors.orange.shade400,
                     ),
                     _buildInfoRow(
                       Icons.description,
-                      'Description',
+                      'คำอธิบาย',
                       currentCat.description,
                       Colors.orange.shade400,
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildActionButton(
-                      Icons.medical_services,
-                      'Health Records',
-                      () {
-                        // TODO: นำไปยังหน้าประวัติสุขภาพ
-                      },
-                    ),
-                    _buildActionButton(
-                      Icons.calendar_today,
-                      'Schedule',
-                      () {
-                        // TODO: นำไปยังหน้าตารางนัด
-                      },
                     ),
                   ],
                 ),

@@ -46,7 +46,7 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Register Cat',
+          'ลงทะเบียนแมว',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.orange,
@@ -89,21 +89,21 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
                           children: [
                             _buildTextField(
                                 controller: nameController,
-                                label: 'Cat Name',
+                                label: 'ชื่อ แมว',
                                 icon: Icons.pets,
-                                hint: 'Enter cat name'),
+                                hint: 'ใส่ชื่อแมว'),
                             const SizedBox(height: 20),
                             _buildTextField(
                                 controller: breedController,
-                                label: 'Cat Breed',
+                                label: 'สายพันธุ์ แมว',
                                 icon: Icons.category,
-                                hint: 'Enter cat breed'),
+                                hint: 'ใส่สายพันธุ์แมว'),
                             const SizedBox(height: 20),
                             _buildTextField(
                                 controller: descriptionController,
-                                label: 'Description',
+                                label: 'อธิบายลักษณะนิสัยแมวหรืออื่นๆ',
                                 icon: Icons.description,
-                                hint: 'Enter description',
+                                hint: 'ใส่คำอธิบายลักษณะนิสัยแมวหรืออื่นๆ',
                                 maxLines: 3),
                             const SizedBox(height: 20),
                             _buildDatePicker(),
@@ -125,7 +125,7 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
                           elevation: 5,
                         ),
                         child: const Text(
-                          'Register Cat',
+                          'ลงทะเบียนแมว',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -184,7 +184,7 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
             const SizedBox(width: 10),
             Text(
               birthDate == null
-                  ? 'Select Birthdate'
+                  ? 'ระบุวันเกิดแมว'
                   : 'Birthdate: ${birthDate!.toLocal().toString().split(' ')[0]}',
               style: TextStyle(
                 color: birthDate == null ? Colors.grey : Colors.black,
@@ -206,7 +206,7 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
             Icon(Icons.medical_services, color: Colors.orange),
             const SizedBox(width: 10),
             const Text(
-              'Select Vaccinations',
+              'วัคซีน',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -242,7 +242,7 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
                 Expanded(
                   child: Text(
                     getSelectedVaccinations().isEmpty
-                        ? 'Select vaccinations'
+                        ? 'เลือกวัคซีน'
                         : getSelectedVaccinations(),
                     style: TextStyle(
                       color: getSelectedVaccinations().isEmpty

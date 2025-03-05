@@ -70,7 +70,7 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
       appBar: AppBar(
         elevation: 0,
         title: const Text(
-          'My Cats',
+          'แมวของฉัน',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -123,7 +123,7 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
                 });
               },
               decoration: InputDecoration(
-                hintText: 'Search cats...',
+                hintText: 'ค้นหาแมว...',
                 hintStyle: TextStyle(color: Colors.grey[300]),
                 prefixIcon: const Icon(Icons.search, color: Colors.white),
                 filled: true,
@@ -159,7 +159,7 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
                     Icon(Icons.pets, size: 80, color: Colors.grey[400]),
                     const SizedBox(height: 16),
                     Text(
-                      'No cats found',
+                      'ไม่พบข้อมูลแมว',
                       style: TextStyle(
                         fontSize: 20,
                         color: Colors.grey[600],
@@ -199,15 +199,15 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
                           return AlertDialog(
                             title: Text('Delete ${cat.name}?'),
                             content: Text(
-                                'Are you sure you want to delete this cat? This action cannot be undone.'),
+                                'แน่ใจหรือไม่ว่าต้องการลบข้อมูลแมว ${cat.name}'),
                             actions: [
                               TextButton(
-                                child: Text('Cancel'),
+                                child: Text('ยกเลิก'),
                                 onPressed: () => Navigator.pop(context),
                               ),
                               TextButton(
                                 child: Text(
-                                  'Delete',
+                                  'ลบ',
                                   style: TextStyle(color: Colors.red),
                                 ),
                                 onPressed: () async {
@@ -238,14 +238,13 @@ class _CatHistoryPageState extends State<CatHistoryPage> {
 
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                          content: Text(
-                                              'Successfully deleted ${cat.name}')),
+                                          content:
+                                              Text('ลบสำเร็จ ${cat.name}')),
                                     );
                                   } catch (e) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                          content:
-                                              Text('Error deleting cat: $e')),
+                                          content: Text('ลบไม่สำเร็จ: $e')),
                                     );
                                   }
                                 },

@@ -56,7 +56,7 @@ class _VaccineSelectionPageState extends State<VaccineSelectionPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Select Vaccinations',
+              'เลือกวัคซีน',
               style:
                   TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
@@ -91,7 +91,7 @@ class _VaccineSelectionPageState extends State<VaccineSelectionPage> {
                 ),
               ),
               child: Text(
-                'Done',
+                'ยืนยัน',
                 style: TextStyle(
                   color: Colors.orange.shade700, // เปลี่ยนเป็นสีส้ม
                   fontSize: 16,
