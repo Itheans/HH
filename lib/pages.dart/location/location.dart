@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart'; // เพิ่ม import สำหรับ Geolocator
 
 class Location {
   final String id;
@@ -57,11 +58,90 @@ class _LocationMapPageState extends State<LocationMapPage> {
   List<Location> _locations = [];
   Set<Marker> _markers = {};
   bool _isSearching = false;
+  bool _isLoadingLocation = false; // เพิ่มตัวแปรเพื่อติดตามสถานะการโหลดตำแหน่ง
+  Position? _currentPosition; // เพิ่มตัวแปรเก็บตำแหน่งปัจจุบัน
 
   @override
   void initState() {
     super.initState();
     _fetchLocations();
+    _getCurrentLocation(); // เรียกฟังก์ชันดึงตำแหน่งปัจจุบันเมื่อเริ่มต้น
+  }
+
+  // เพิ่มฟังก์ชันสำหรับดึงตำแหน่งปัจจุบัน
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+    });
+
+    try {
+      // ตรวจสอบว่าเปิดใช้งาน Location Service หรือไม่
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('กรุณาเปิดใช้งานบริการระบุตำแหน่ง')),
+        );
+        return;
+      }
+
+      // ตรวจสอบสิทธิ์การเข้าถึงตำแหน่ง
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'ไม่สามารถเข้าถึงตำแหน่งได้ กรุณาเปิดสิทธิ์ในการตั้งค่า')),
+        );
+        return;
+      }
+
+      // ดึงตำแหน่งปัจจุบัน
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _currentPosition = position;
+      });
+
+      // เลื่อนแผนที่ไปยังตำแหน่งปัจจุบัน
+      if (_mapController != null && _currentPosition != null) {
+        _moveToCurrentPosition();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการดึงตำแหน่ง: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingLocation = false;
+      });
+    }
+  }
+
+  // เพิ่มฟังก์ชันสำหรับการเลื่อนแผนที่ไปยังตำแหน่งปัจจุบัน
+  void _moveToCurrentPosition() {
+    if (_currentPosition != null) {
+      _mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target:
+                LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+            zoom: 15,
+          ),
+        ),
+      );
+    }
   }
 
   void _fetchLocations() {
@@ -341,8 +421,9 @@ class _LocationMapPageState extends State<LocationMapPage> {
             ),
             markers: _markers,
             onTap: _addOrUpdateLocation,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
+            myLocationEnabled: true, // เปิดใช้งานปุ่มแสดงตำแหน่งปัจจุบัน
+            myLocationButtonEnabled:
+                false, // ปิดปุ่มดีฟอลต์เพื่อใช้ปุ่มที่เราสร้างเอง
             mapToolbarEnabled: true,
             zoomControlsEnabled: true,
           ),
@@ -388,6 +469,20 @@ class _LocationMapPageState extends State<LocationMapPage> {
                   ],
                 ),
               ),
+            ),
+          ),
+          // เพิ่มปุ่มสำหรับไปยังตำแหน่งปัจจุบัน
+          Positioned(
+            right: 16,
+            bottom:
+                _locations.isNotEmpty ? 140 : 16, // ปรับตำแหน่งตามความเหมาะสม
+            child: FloatingActionButton(
+              heroTag: "btn_my_location",
+              onPressed: _isLoadingLocation ? null : _getCurrentLocation,
+              backgroundColor: Colors.white,
+              child: _isLoadingLocation
+                  ? CircularProgressIndicator()
+                  : Icon(Icons.my_location, color: Colors.blue),
             ),
           ),
           if (_locations.isNotEmpty)
@@ -442,12 +537,32 @@ class _LocationMapPageState extends State<LocationMapPage> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Spacer(),
-                                Text(
-                                  'Lat: ${loc.lat.toStringAsFixed(4)}\nLng: ${loc.lng.toStringAsFixed(4)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
+                                // เพิ่มปุ่มไปยังตำแหน่งที่บันทึกไว้
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Lat: ${loc.lat.toStringAsFixed(4)}\nLng: ${loc.lng.toStringAsFixed(4)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.navigation,
+                                          color: Colors.blue),
+                                      onPressed: () {
+                                        _mapController.animateCamera(
+                                          CameraUpdate.newLatLngZoom(
+                                            LatLng(loc.lat, loc.lng),
+                                            15,
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Navigate to location',
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
