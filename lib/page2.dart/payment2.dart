@@ -177,7 +177,7 @@ class _Payment2State extends State<Payment2> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Withdraw Money'),
+        title: const Text('ถอนเงิน'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -185,8 +185,8 @@ class _Payment2State extends State<Payment2> {
               controller: amountController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: 'Amount',
-                hintText: 'Enter amount to withdraw',
+                labelText: 'จำนวนเงินที่ต้องการถอน',
+                hintText: 'ยืนยันจำนวนเงินที่ต้องการถอน',
                 prefixText: '฿ ',
               ),
             ),
@@ -195,21 +195,21 @@ class _Payment2State extends State<Payment2> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('ยกเลิก'),
           ),
           ElevatedButton(
             onPressed: () async {
               final amount = int.tryParse(amountController.text);
               if (amount == null || amount <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid amount')),
+                  const SnackBar(content: Text('กรุณากรอกจำนวนเงิน')),
                 );
                 return;
               }
 
               if (amount > int.parse(wallet ?? "0")) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Insufficient balance')),
+                  const SnackBar(content: Text('ยอดเงินไม่เพียงพอ')),
                 );
                 return;
               }
@@ -218,7 +218,7 @@ class _Payment2State extends State<Payment2> {
               await _processWithdrawal(amount);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Withdraw'),
+            child: const Text('ยืนยัน'),
           ),
         ],
       ),
@@ -303,7 +303,7 @@ class _Payment2State extends State<Payment2> {
         elevation: 0,
         backgroundColor: Colors.teal,
         title: const Text(
-          'Sitter Earnings',
+          'รายได้ของคุณ',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -340,7 +340,7 @@ class _Payment2State extends State<Payment2> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _withdrawMoney,
         icon: const Icon(Icons.account_balance_wallet),
-        label: const Text('Withdraw'),
+        label: const Text('ถอนเงิน'),
         backgroundColor: Colors.teal,
       ),
     );
@@ -373,7 +373,7 @@ class _Payment2State extends State<Payment2> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Your Earnings',
+                'จำนวนเงิน',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -395,14 +395,7 @@ class _Payment2State extends State<Payment2> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            'Available Balance',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
-          ),
+          const SizedBox(height: 23),
         ],
       ),
     );
@@ -554,7 +547,7 @@ class _Payment2State extends State<Payment2> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Transaction History',
+            'ประวัติรายรับ',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -570,7 +563,7 @@ class _Payment2State extends State<Payment2> {
                   ),
                   child: const Center(
                     child: Text(
-                      'No transactions yet',
+                      'ไม่มีประวัติรายรับ',
                       style: TextStyle(color: Colors.grey),
                     ),
                   ),

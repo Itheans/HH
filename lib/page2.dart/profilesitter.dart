@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:myproject/pages.dart/login.dart';
 
 class ProfileSitter extends StatefulWidget {
   const ProfileSitter({super.key});
@@ -156,17 +157,16 @@ class _ProfileSitterState extends State<ProfileSitter> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Confirm Account Deletion'),
+          title: const Text('ยืนยันการลบบัญชีผู้ใช้'),
           content: SingleChildScrollView(
             child: ListBody(
               children: <Widget>[
-                const Text(
-                    'Please enter your password to confirm account deletion.'),
+                const Text('กรุณายืนยันการลบบัญชีผู้ใช้โดยกรอกรหัสผ่านของคุณ'),
                 TextField(
                   controller: passwordController,
                   obscureText: true,
                   decoration: const InputDecoration(
-                    hintText: 'Password',
+                    hintText: 'รหัสผ่าน',
                   ),
                 ),
               ],
@@ -174,13 +174,13 @@ class _ProfileSitterState extends State<ProfileSitter> {
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
+              child: const Text('ยกเลิก'),
               onPressed: () {
                 Navigator.of(context).pop();
               },
             ),
             ElevatedButton(
-              child: const Text('Confirm'),
+              child: const Text('ยืนยัน'),
               onPressed: () async {
                 try {
                   User? user = FirebaseAuth.instance.currentUser;
@@ -224,23 +224,48 @@ class _ProfileSitterState extends State<ProfileSitter> {
   void _showLogoutDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
           ),
-          TextButton(
-            onPressed: () {
-              FirebaseAuth.instance.signOut();
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            child: const Text('Logout'),
+          title: Row(
+            children: const [
+              Icon(Icons.logout, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('ออกจากระบบ'),
+            ],
           ),
-        ],
-      ),
+          content: const Text('คุณต้องการออกจากระบบใช่หรือไม่?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'ยกเลิก',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (!mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LogIn()),
+                  (route) => false,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('ออกจากระบบ'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -250,7 +275,7 @@ class _ProfileSitterState extends State<ProfileSitter> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
-          'Profile',
+          'โปรไฟล์',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -356,19 +381,19 @@ class _ProfileSitterState extends State<ProfileSitter> {
         children: [
           _buildProfileField(
             icon: Icons.person,
-            title: 'Name',
+            title: 'ชื่อ',
             value: name ?? 'Not set',
             onTap: () => _showEditDialog('Name', nameController),
           ),
           _buildProfileField(
             icon: Icons.email,
-            title: 'Email',
+            title: 'อีเมล',
             value: email ?? 'Not set',
             onTap: () => _showEditDialog('Email', emailController),
           ),
           _buildProfileField(
             icon: Icons.phone,
-            title: 'Phone',
+            title: 'เบอร์โทร',
             value: phone ?? 'Not set',
             onTap: () => _showEditDialog('Phone', phoneController),
           ),
@@ -383,8 +408,8 @@ class _ProfileSitterState extends State<ProfileSitter> {
               ),
             ),
             child: const Text(
-              'Save Changes',
-              style: TextStyle(fontSize: 16),
+              'ยืนยันการแก้ไขข้อมูล',
+              style: TextStyle(fontSize: 16, color: Colors.white),
             ),
           ),
           const SizedBox(height: 20),
@@ -395,7 +420,7 @@ class _ProfileSitterState extends State<ProfileSitter> {
               padding: const EdgeInsets.symmetric(vertical: 15),
             ),
             child: const Text(
-              'Delete Account',
+              'ลบบัญชีผู้ใช้',
               style: TextStyle(
                 color: Colors.red,
                 fontSize: 16,
@@ -470,14 +495,14 @@ class _ProfileSitterState extends State<ProfileSitter> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: const Text('ยกเลิก'),
             ),
             ElevatedButton(
               onPressed: () {
                 _updateProfile();
                 Navigator.of(context).pop();
               },
-              child: const Text('Save'),
+              child: const Text('บันทึก'),
             ),
           ],
         );

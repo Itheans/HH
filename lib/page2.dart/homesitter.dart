@@ -85,7 +85,7 @@ class _Home2State extends State<Home2> {
       backgroundColor: const Color(0xFFF5F5F5), // Soft grey background
       appBar: AppBar(
         title: Text(
-          'Cat Sitter',
+          'หน้าหลัก',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,

@@ -40,15 +40,12 @@ class _MyWidgetState extends State<Home> {
                     const SizedBox(height: 20),
                     _buildHeader(),
                     const SizedBox(height: 30),
-                    Text('Cat', style: AppWidget.HeadlineTextFeildStyle()),
-                    Text('Pet take care',
+                    Text('แมว', style: AppWidget.HeadlineTextFeildStyle()),
+                    Text('บริการฝากเลี้ยงแมว',
                         style: AppWidget.LightTextFeildStyle()),
                     const SizedBox(height: 20),
                     _buildQuickActions(),
                     const SizedBox(height: 30),
-                    Text('Recent Customers',
-                        style: AppWidget.semiboldTextFeildStyle()),
-                    const SizedBox(height: 15),
                     _buildCustomerCards(),
                     const SizedBox(height: 20),
                   ],
@@ -66,7 +63,7 @@ class _MyWidgetState extends State<Home> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'Cat Sitter',
+            'หน้าหลัก',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,

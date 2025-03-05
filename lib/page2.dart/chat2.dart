@@ -129,7 +129,7 @@ class _MyWidgetState extends State<Chat> {
                         },
                         decoration: InputDecoration(
                             border: InputBorder.none,
-                            hintText: 'Search User',
+                            hintText: 'ค้นหา...',
                             hintStyle: TextStyle(
                                 color: Colors.white,
                                 fontSize: 25,
@@ -140,7 +140,7 @@ class _MyWidgetState extends State<Chat> {
                             fontWeight: FontWeight.w500),
                       ))
                     : Text(
-                        'Chat',
+                        'แชท',
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 25,

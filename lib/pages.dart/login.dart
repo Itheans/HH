@@ -163,7 +163,7 @@ class _LoginState extends State<LogIn> {
                               height: 20,
                             ),
                             Text(
-                              'Login here',
+                              'เข้าสู่ระบบ',
                               style: AppWidget.HeadlineTextFeildStyle(),
                             ),
                             SizedBox(
@@ -173,12 +173,12 @@ class _LoginState extends State<LogIn> {
                               controller: useremailController,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter Email';
+                                  return 'กรุณากรอกอีเมล';
                                 }
                                 return null;
                               },
                               decoration: InputDecoration(
-                                  hintText: 'Email',
+                                  hintText: 'อีเมล',
                                   hintStyle: AppWidget.LightTextFeildStyle(),
                                   prefixIcon: Icon(Icons.email_outlined)),
                             ),
@@ -189,13 +189,13 @@ class _LoginState extends State<LogIn> {
                               controller: userpasswordController,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Please enter Password';
+                                  return 'กรุณากรอกรหัสผ่าน';
                                 }
                                 return null;
                               },
                               obscureText: true,
                               decoration: InputDecoration(
-                                  hintText: 'Password',
+                                  hintText: 'รหัสผ่าน',
                                   hintStyle: AppWidget.LightTextFeildStyle(),
                                   prefixIcon: Icon(Icons.password_outlined)),
                             ),
@@ -212,7 +212,7 @@ class _LoginState extends State<LogIn> {
                               },
                               child: Container(
                                 alignment: Alignment.topRight,
-                                child: Text('Forgot Password?',
+                                child: Text('ลืมรหัสผ่าน?',
                                     style: AppWidget.LightTextFeildStyle()),
                               ),
                             ),
@@ -241,7 +241,7 @@ class _LoginState extends State<LogIn> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      'LOGIN',
+                                      'เข้าสู่ระบบ',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 18,
@@ -266,7 +266,7 @@ class _LoginState extends State<LogIn> {
                       Navigator.push(context,
                           MaterialPageRoute(builder: (context) => SignUp()));
                     },
-                    child: Text("Don't have an account? Sign Up",
+                    child: Text("ยังไม่มีบัญชีผู้ใช้? สมัครสมาชิก",
                         style: AppWidget.LightTextFeildStyle()),
                   ),
                   const SizedBox(height: 10),

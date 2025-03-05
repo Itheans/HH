@@ -128,7 +128,7 @@ class _SignUpState extends State<SignUp> {
                         child: Column(
                           children: [
                             SizedBox(height: 20),
-                            Text('Sign Up',
+                            Text('ลงทะเบียน',
                                 style: TextStyle(
                                     fontSize: 24, fontWeight: FontWeight.bold)),
                             SizedBox(height: 20),
@@ -142,7 +142,7 @@ class _SignUpState extends State<SignUp> {
                                 return null;
                               },
                               decoration: InputDecoration(
-                                  hintText: 'Name',
+                                  hintText: 'ชื่อ',
                                   prefixIcon: Icon(Icons.person_outline)),
                             ),
                             SizedBox(height: 20),
@@ -156,7 +156,7 @@ class _SignUpState extends State<SignUp> {
                                 return null;
                               },
                               decoration: InputDecoration(
-                                  hintText: 'Email',
+                                  hintText: 'อีเมล',
                                   prefixIcon: Icon(Icons.email_outlined)),
                             ),
                             SizedBox(height: 20),
@@ -171,7 +171,7 @@ class _SignUpState extends State<SignUp> {
                                 return null;
                               },
                               decoration: InputDecoration(
-                                  hintText: 'Password',
+                                  hintText: 'รหัสผ่าน',
                                   prefixIcon: Icon(Icons.password_outlined)),
                             ),
                             SizedBox(height: 20),
@@ -207,7 +207,7 @@ class _SignUpState extends State<SignUp> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      'SIGN UP',
+                                      'ลงทะเบียน',
                                       style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 18,
@@ -225,7 +225,7 @@ class _SignUpState extends State<SignUp> {
                                     MaterialPageRoute(
                                         builder: (context) => LogIn()));
                               },
-                              child: Text("Already have an account? Login",
+                              child: Text("มีบัญชีอยู่แล้ว? เข้าสู่ระบบ",
                                   style: AppWidget.LightTextFeildStyle()),
                             )
                           ],
