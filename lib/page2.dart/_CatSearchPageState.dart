@@ -26,7 +26,7 @@ class _CatSearchPageState extends State<CatSearchPage> {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(
-              'wVmQtidCCcRFbGevZcICnre9tPo2') // ใส่ user_id ของผู้ใช้ที่ต้องการดึงข้อมูล
+              'izpM2XvdqJW4odaugUa2f2a9TTZ2') // ใส่ user_id ของผู้ใช้ที่ต้องการดึงข้อมูล
           .collection('cats')
           .get();
 

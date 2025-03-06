@@ -48,9 +48,9 @@ class ReviewConstants {
 
 class ReviewsPage extends StatefulWidget {
   final String itemId;
-  final String sitterId;
+  String sitterId; // เปลี่ยนจาก final เป็นแค่ String ธรรมดา
 
-  const ReviewsPage({
+  ReviewsPage({
     Key? key,
     required this.itemId,
     required this.sitterId,
@@ -73,9 +73,32 @@ class _ReviewsPageState extends State<ReviewsPage> {
   @override
   void initState() {
     super.initState();
-    _initializeData();
-    _setupScrollListener();
-    _loadSitterData();
+    _setHardcodedSitterId().then((_) {
+      _initializeData();
+      _setupScrollListener();
+    });
+  }
+
+  // เพิ่มฟังก์ชันนี้ใน class _ReviewsPageState
+  Future<void> _setHardcodedSitterId() async {
+    // ระบุ sitterId ที่แน่นอนตรงนี้ - แทนที่ด้วย ID จริงของพี่เลี้ยงแมวที่คุณต้องการ
+    final String hardcodedSitterId = "SE9htBfMnRbSnTUgA9bViITgH6M2";
+
+    // อัปเดต sitterId ใน widget
+    setState(() {
+      // ในรูปแบบปกติจะไม่สามารถอัปเดต final ได้ แต่เราสามารถใช้ hack ดังนี้
+      (widget as dynamic).sitterId = hardcodedSitterId;
+    });
+
+    // โหลดข้อมูลใหม่
+    await _loadSitterData();
+
+    // ตรวจสอบว่าโหลดสำเร็จไหม
+    if (sitterName == 'Unknown') {
+      _showErrorSnackBar('ยังคงไม่สามารถโหลดข้อมูลพี่เลี้ยงแมวได้');
+    } else {
+      _showSuccessSnackBar('โหลดข้อมูลพี่เลี้ยงแมวสำเร็จ: $sitterName');
+    }
   }
 
   Future<void> _loadSitterData() async {
@@ -350,35 +373,56 @@ class _ReviewsPageState extends State<ReviewsPage> {
       margin: const EdgeInsets.all(16),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: Colors.teal.shade100,
-              child: const Icon(Icons.person, size: 30, color: Colors.teal),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    sitterName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: Colors.teal.shade100,
+                  child: const Icon(Icons.person, size: 30, color: Colors.teal),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        sitterName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Cat Sitter',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                      // แสดง sitterId สำหรับการดีบัก
+                      Text(
+                        'SitterId: ${widget.sitterId}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Cat Sitter',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                // เพิ่มปุ่มรีเฟรช
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () {
+                    _loadSitterData();
+                    _initializeData();
+                  },
+                ),
+              ],
             ),
           ],
         ),
