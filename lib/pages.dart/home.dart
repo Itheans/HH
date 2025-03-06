@@ -111,7 +111,7 @@ class _MyWidgetState extends State<Home> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const ReviewsPage(
+              builder: (context) => ReviewsPage(
                 itemId: 'booking_id',
                 sitterId: '/ sitters_id',
               ),

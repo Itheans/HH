@@ -26,11 +26,16 @@ class _LoginState extends State<LogIn> {
       role = '';
   TextEditingController useremailController = TextEditingController();
   TextEditingController userpasswordController = TextEditingController();
-
   final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  bool _obscurePassword = true;
 
   // ฟังก์ชันล็อกอิน
   userLogin() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       // ล็อกอินด้วยอีเมลและรหัสผ่าน
       UserCredential userCredential = await FirebaseAuth.instance
@@ -39,7 +44,6 @@ class _LoginState extends State<LogIn> {
 
       // ดึง UID ของผู้ใช้
       String uid = userCredential.user!.uid;
-      print('User logged in with UID: $uid');
 
       // ดึงข้อมูลผู้ใช้จาก Firestore โดยใช้ UID
       DocumentSnapshot userSnapshot =
@@ -54,7 +58,6 @@ class _LoginState extends State<LogIn> {
         pic = userData['photo'] ?? '';
         id = userData['uid'] ?? '';
         role = userData['role'] ?? '';
-        print('User data: $userData');
 
         // เก็บข้อมูลผู้ใช้ใน SharedPreferences
         await SharedPreferenceHelper().saveUserDisplayName(name);
@@ -74,153 +77,234 @@ class _LoginState extends State<LogIn> {
       } else {
         // กรณีข้อมูลผู้ใช้ไม่พบใน Firestore
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('User data not found in Firestore.')),
+          SnackBar(
+            content: Text('ไม่พบข้อมูลผู้ใช้'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } on FirebaseAuthException catch (e) {
       // จัดการข้อผิดพลาดเมื่อล็อกอินไม่สำเร็จ
+      String errorMessage = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+
       if (e.code == 'user-not-found') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No user found for that email.')),
-        );
+        errorMessage = 'ไม่พบบัญชีผู้ใช้นี้';
       } else if (e.code == 'wrong-password') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wrong password provided for that user.')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: ${e.message}')),
-        );
+        errorMessage = 'รหัสผ่านไม่ถูกต้อง';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'รูปแบบอีเมลไม่ถูกต้อง';
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (e) {
       // จัดการข้อผิดพลาดทั่วไป
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An error occurred: $e')),
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาด: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        child: Stack(
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        child: Column(
           children: [
+            // ส่วนหัว
             Container(
-                width: MediaQuery.of(context).size.width,
-                height: MediaQuery.of(context).size.height / 2.5,
-                decoration: BoxDecoration(
-                    gradient: LinearGradient(
+              height: MediaQuery.of(context).size.height * 0.35,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xff84ffff),
-                    Color(0xff26c6da),
-                    Color(0xff00e5ff)
+                    Colors.orange.shade300,
+                    Colors.orange.shade500,
+                    Colors.orange.shade700,
                   ],
-                ))),
-            Container(
-              margin:
-                  EdgeInsets.only(top: MediaQuery.of(context).size.height / 3),
-              height: MediaQuery.of(context).size.height / 2,
-              width: MediaQuery.of(context).size.width,
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(15),
-                      topRight: Radius.circular(15))),
-              child: Text(''),
-            ),
-            Container(
-              margin: EdgeInsets.only(top: 50),
-              child: Column(
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(40),
+                  bottomRight: Radius.circular(40),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.3),
+                    spreadRadius: 3,
+                    blurRadius: 10,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Stack(
                 children: [
                   Center(
-                    child: Image.asset(
-                      'images/logo.png',
-                      width: MediaQuery.of(context).size.width / 2.5,
-                      fit: BoxFit.cover,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Image.asset(
+                        'images/logo.png',
+                        width: MediaQuery.of(context).size.width * 0.5,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
-                  SizedBox(
-                    height: 20,
-                  ),
-                  Material(
-                    elevation: 5,
-                    borderRadius: BorderRadius.circular(15),
-                    child: Container(
-                      padding: EdgeInsets.only(left: 20, right: 20),
-                      width: MediaQuery.of(context).size.width / 1.2,
-                      height: MediaQuery.of(context).size.height / 2.5,
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15)),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            SizedBox(
-                              height: 20,
-                            ),
-                            Text(
-                              'เข้าสู่ระบบ',
-                              style: AppWidget.HeadlineTextFeildStyle(),
-                            ),
-                            SizedBox(
-                              height: 20,
-                            ),
-                            TextFormField(
-                              controller: useremailController,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'กรุณากรอกอีเมล';
-                                }
-                                return null;
-                              },
-                              decoration: InputDecoration(
-                                  hintText: 'อีเมล',
-                                  hintStyle: AppWidget.LightTextFeildStyle(),
-                                  prefixIcon: Icon(Icons.email_outlined)),
-                            ),
-                            SizedBox(
-                              height: 20,
-                            ),
-                            TextFormField(
-                              controller: userpasswordController,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'กรุณากรอกรหัสผ่าน';
-                                }
-                                return null;
-                              },
-                              obscureText: true,
-                              decoration: InputDecoration(
-                                  hintText: 'รหัสผ่าน',
-                                  hintStyle: AppWidget.LightTextFeildStyle(),
-                                  prefixIcon: Icon(Icons.password_outlined)),
-                            ),
-                            SizedBox(
-                              height: 30,
-                            ),
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) =>
-                                            ForgotPassword()));
-                              },
-                              child: Container(
-                                alignment: Alignment.topRight,
-                                child: Text('ลืมรหัสผ่าน?',
-                                    style: AppWidget.LightTextFeildStyle()),
-                              ),
-                            ),
-                            SizedBox(
-                              height: 40,
-                            ),
-                            GestureDetector(
-                              onTap: () {
+                ],
+              ),
+            ),
+
+            SizedBox(height: 40),
+
+            // ส่วนแบบฟอร์ม
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'เข้าสู่ระบบ',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+
+                    SizedBox(height: 40),
+
+                    // อีเมล
+                    TextFormField(
+                      controller: useremailController,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'กรุณากรอกอีเมล';
+                        } else if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                            .hasMatch(value)) {
+                          return 'รูปแบบอีเมลไม่ถูกต้อง';
+                        }
+                        return null;
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'อีเมล',
+                        floatingLabelStyle:
+                            TextStyle(color: Colors.orange.shade700),
+                        prefixIcon: Icon(Icons.email_outlined,
+                            color: Colors.orange.shade400),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(
+                              color: Colors.orange.shade400, width: 2),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
+                    // รหัสผ่าน
+                    TextFormField(
+                      controller: userpasswordController,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'กรุณากรอกรหัสผ่าน';
+                        }
+                        return null;
+                      },
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'รหัสผ่าน',
+                        floatingLabelStyle:
+                            TextStyle(color: Colors.orange.shade700),
+                        prefixIcon: Icon(Icons.lock_outline,
+                            color: Colors.orange.shade400),
+                        suffixIcon: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                          child: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(
+                              color: Colors.orange.shade400, width: 2),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                    ),
+
+                    SizedBox(height: 15),
+
+                    // ลืมรหัสผ่าน
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => ForgotPassword()),
+                        );
+                      },
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'ลืมรหัสผ่าน?',
+                          style: TextStyle(
+                            color: Colors.orange.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 30),
+
+                    // ปุ่มเข้าสู่ระบบ
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () {
                                 if (_formKey.currentState!.validate()) {
                                   setState(() {
                                     email = useremailController.text;
@@ -229,61 +313,88 @@ class _LoginState extends State<LogIn> {
                                   userLogin();
                                 }
                               },
-                              child: Material(
-                                elevation: 5,
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(vertical: 8),
-                                  width: 200,
-                                  decoration: BoxDecoration(
-                                    color: Color.fromARGB(255, 253, 107, 63),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      'เข้าสู่ระบบ',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontFamily: 'Poppins1',
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade600,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          elevation: 3,
+                          shadowColor: Colors.orange.withOpacity(0.5),
+                        ),
+                        child: _isLoading
+                            ? CircularProgressIndicator(
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              )
+                            : Text(
+                                'เข้าสู่ระบบ',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
+                      ),
+                    ),
+
+                    SizedBox(height: 40),
+
+                    // ลงทะเบียน และ Admin
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'ยังไม่มีบัญชีผู้ใช้? ',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => SignUp()),
+                            );
+                          },
+                          child: Text(
+                            'สมัครสมาชิก',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
                             ),
-                          ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/admin');
+                        },
+                        child: Container(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'Admin Login',
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    height: 70,
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(context,
-                          MaterialPageRoute(builder: (context) => SignUp()));
-                    },
-                    child: Text("ยังไม่มีบัญชีผู้ใช้? สมัครสมาชิก",
-                        style: AppWidget.LightTextFeildStyle()),
-                  ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pushNamed(context, '/admin');
-                    },
-                    child: Text(
-                      "Admin Login",
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
+                    SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
           ],
