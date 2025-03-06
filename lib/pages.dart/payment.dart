@@ -123,7 +123,7 @@ class _PaymentState extends State<Payment> {
       if (!mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('ชำระเงินสำเร็จ เติมเงิน ฿$amount ในกระเป๋าเงิน'),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.orange,
       ));
 
       // อัพเดทค่า wallet ในหน้าจอ
@@ -202,7 +202,7 @@ class _PaymentState extends State<Payment> {
                       padding: EdgeInsets.only(
                           top: 50, left: 20, right: 20, bottom: 20),
                       decoration: BoxDecoration(
-                        color: Colors.teal,
+                        color: Colors.orange,
                         borderRadius: BorderRadius.only(
                           bottomLeft: Radius.circular(30),
                           bottomRight: Radius.circular(30),
@@ -255,7 +255,7 @@ class _PaymentState extends State<Payment> {
                                 Text(
                                   "฿${wallet!}",
                                   style: TextStyle(
-                                    color: Colors.teal,
+                                    color: Colors.orange,
                                     fontSize: 36,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -307,8 +307,8 @@ class _PaymentState extends State<Payment> {
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(15),
-                                    border:
-                                        Border.all(color: Colors.teal.shade200),
+                                    border: Border.all(
+                                        color: Colors.orange.shade200),
                                     boxShadow: [
                                       BoxShadow(
                                         color: Colors.black.withOpacity(0.03),
@@ -323,7 +323,7 @@ class _PaymentState extends State<Payment> {
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.teal,
+                                        color: Colors.orange,
                                       ),
                                     ),
                                   ),
@@ -353,7 +353,7 @@ class _PaymentState extends State<Payment> {
                               decoration: InputDecoration(
                                 hintText: 'ระบุจำนวนเงิน',
                                 prefixIcon: Icon(Icons.monetization_on,
-                                    color: Colors.teal),
+                                    color: Colors.orange),
                                 suffixText: 'THB',
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(15),
@@ -377,7 +377,7 @@ class _PaymentState extends State<Payment> {
                                       addMoney(amountController.text.trim());
                                     },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.teal,
+                                backgroundColor: Colors.orange,
                                 padding: EdgeInsets.symmetric(vertical: 15),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(15),
