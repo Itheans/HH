@@ -30,6 +30,7 @@ class _ChatpageState extends State<ChatPage> {
       chatRoomId,
       myRole;
   Stream? messageStream;
+  bool _isSending = false;
 
   getthesharedpref() async {
     myUserName = await SharedPreferenceHelper().getUserName();
@@ -62,33 +63,60 @@ class _ChatpageState extends State<ChatPage> {
     }
   }
 
-  Widget chatMessageTile(String message, bool sendByMe) {
-    return Row(
-      mainAxisAlignment:
-          sendByMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-      children: [
-        Flexible(
-            child: Container(
-          padding: EdgeInsets.all(16),
-          margin: EdgeInsets.symmetric(vertical: 5, horizontal: 16),
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  bottomRight:
-                      sendByMe ? Radius.circular(0) : Radius.circular(24),
-                  topRight: Radius.circular(24),
+  Widget chatMessageTile(String message, bool sendByMe, String timestamp) {
+    return Align(
+      alignment: sendByMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+        child: Column(
+          crossAxisAlignment:
+              sendByMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: sendByMe ? Colors.orange.shade500 : Colors.grey.shade200,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
                   bottomLeft:
-                      sendByMe ? Radius.circular(24) : Radius.circular(0)),
-              color: sendByMe
-                  ? Color.fromARGB(255, 227, 228, 226)
-                  : Color.fromARGB(255, 63, 245, 124)),
-          child: Text(
-            message,
-            style: TextStyle(
-                color: Colors.black, fontSize: 16, fontWeight: FontWeight.w500),
-          ),
-        ))
-      ],
+                      sendByMe ? Radius.circular(20) : Radius.circular(0),
+                  bottomRight:
+                      sendByMe ? Radius.circular(0) : Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    spreadRadius: 1,
+                    blurRadius: 3,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: sendByMe ? Colors.white : Colors.black87,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: Text(
+                timestamp,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -98,27 +126,36 @@ class _ChatpageState extends State<ChatPage> {
         builder: (context, AsyncSnapshot snapshot) {
           return snapshot.hasData
               ? ListView.builder(
-                  padding: EdgeInsets.only(bottom: 90.0, top: 130),
+                  padding: EdgeInsets.only(bottom: 90, top: 10),
                   itemCount: snapshot.data.docs.length,
                   reverse: true,
                   itemBuilder: (context, index) {
                     DocumentSnapshot ds = snapshot.data.docs[index];
                     return chatMessageTile(
-                        ds["message"], myUserName == ds["sendBy"]);
+                      ds["message"],
+                      myUserName == ds["sendBy"],
+                      ds["ts"] ?? "",
+                    );
                   })
               : Center(
-                  child: CircularProgressIndicator(),
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                  ),
                 );
         });
   }
 
-  addMessage(bool sendClicked) {
+  addMessage(bool sendClicked) async {
     if (messageController.text != "") {
+      setState(() {
+        _isSending = true;
+      });
+
       String message = messageController.text;
       messageController.text = "";
 
       DateTime now = DateTime.now();
-      String formattedDate = DateFormat('h:mma').format(now);
+      String formattedDate = DateFormat('h:mm a').format(now);
       Map<String, dynamic> messageInfoMap = {
         "message": message,
         "sendBy": myUserName,
@@ -128,21 +165,32 @@ class _ChatpageState extends State<ChatPage> {
       };
       messageId ??= randomAlphaNumeric(10);
 
-      DatabaseMethods()
-          .addMessage(chatRoomId!, messageId!, messageInfoMap)
-          .then((value) {
+      try {
+        await DatabaseMethods()
+            .addMessage(chatRoomId!, messageId!, messageInfoMap);
+
         Map<String, dynamic> lastMessageInfoMap = {
           "lastMessage": message,
           "lastMessageSendTs": formattedDate,
           "time": FieldValue.serverTimestamp(),
           "lastMessageSendBy": myUserName,
         };
-        DatabaseMethods()
+
+        await DatabaseMethods()
             .updateLastMessageSend(chatRoomId!, lastMessageInfoMap);
+
         if (sendClicked) {
           messageId = null;
         }
-      });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาดในการส่งข้อความ: $e')),
+        );
+      } finally {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 
@@ -154,75 +202,153 @@ class _ChatpageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Container(
-        padding: EdgeInsets.only(top: 60.0),
-        child: Stack(
-          children: [
-            Container(
-                margin: EdgeInsets.only(top: 50.0),
-                width: MediaQuery.of(context).size.width,
-                height: MediaQuery.of(context).size.height / 1.12,
-                decoration: BoxDecoration(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.orange.shade500,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        flexibleSpace: SafeArea(
+          child: Container(
+            padding: EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: Icon(
+                    Icons.arrow_back_ios,
                     color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(30),
-                        topRight: Radius.circular(30))),
-                child: chatMessage()),
-            Padding(
-              padding: const EdgeInsets.only(left: 10.0),
+                  ),
+                ),
+                SizedBox(width: 2),
+                widget.profileurl.isNotEmpty
+                    ? CircleAvatar(
+                        backgroundImage: NetworkImage(widget.profileurl),
+                        maxRadius: 20,
+                      )
+                    : CircleAvatar(
+                        child: Icon(Icons.person),
+                        backgroundColor: Colors.grey[300],
+                        maxRadius: 20,
+                      ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        widget.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        widget.role == 'sitter' ? 'ผู้รับเลี้ยง' : 'ผู้ใช้งาน',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: widget.role == 'sitter'
+                      ? Icon(Icons.pets, color: Colors.white, size: 16)
+                      : Icon(Icons.person, color: Colors.white, size: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+            ),
+            child: chatMessage(),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              margin: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(25),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.2),
+                    spreadRadius: 1,
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
-                    },
-                    child: Icon(
-                      Icons.arrow_back_ios_new_outlined,
-                      color: Colors.white,
+                  Expanded(
+                    child: TextField(
+                      controller: messageController,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: "พิมพ์ข้อความ...",
+                        hintStyle: TextStyle(color: Colors.grey[400]),
+                        border: InputBorder.none,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
                     ),
                   ),
-                  SizedBox(
-                    width: 90.0,
-                  ),
-                  Text(
-                    widget.name,
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 25.0,
-                        fontWeight: FontWeight.bold),
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(50),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(50),
+                      onTap: _isSending ? null : () => addMessage(true),
+                      child: Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade500,
+                          shape: BoxShape.circle,
+                        ),
+                        child: _isSending
+                            ? SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : Icon(
+                                Icons.send,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            Container(
-              margin: EdgeInsets.only(left: 20.0, right: 20.0, bottom: 20.0),
-              alignment: Alignment.bottomCenter,
-              child: Material(
-                elevation: 5.0,
-                borderRadius: BorderRadius.circular(30),
-                child: Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30)),
-                  child: TextField(
-                    controller: messageController,
-                    decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: "Type a message",
-                        hintStyle: TextStyle(color: Colors.black45),
-                        suffixIcon: GestureDetector(
-                            onTap: () {
-                              addMessage(true);
-                            },
-                            child: Icon(Icons.send_rounded))),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -17,6 +17,9 @@ class _MyWidgetState extends State<Chat> {
   bool search = false;
   String? myName, myProfilePic, myUserName, myEmail, myRole;
   Stream<QuerySnapshot>? chatRoomsStream;
+  final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false;
+
   getthesharedpref() async {
     myName = await SharedPreferenceHelper().getDisplayName();
     myProfilePic = await SharedPreferenceHelper().getUserPic();
@@ -38,10 +41,41 @@ class _MyWidgetState extends State<Chat> {
       stream: chatRoomsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return Center(
+              child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+          ));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text("No Chat Rooms Found"));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.chat_bubble_outline,
+                  size: 80,
+                  color: Colors.grey[400],
+                ),
+                SizedBox(height: 16),
+                Text(
+                  "ไม่พบการสนทนา",
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  "ค้นหาผู้รับเลี้ยงเพื่อเริ่มการสนทนา",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                  ),
+                ),
+              ],
+            ),
+          );
         }
         return ListView.builder(
           padding: EdgeInsets.zero,
@@ -79,143 +113,178 @@ class _MyWidgetState extends State<Chat> {
   var tempSearchStore = [];
 
   initiateSearch(value) {
-    print("กำลังค้นหา: $value");
+    setState(() {
+      _isSearching = true;
+    });
 
-    if (value.length == 0) {
+    if (value.isEmpty) {
       setState(() {
         queryResultSet = [];
         tempSearchStore = [];
+        _isSearching = false;
       });
       return;
     }
 
-    setState(() {
-      search = true;
-    });
-
+    // ลองทั้งแบบตัวพิมพ์ใหญ่ และตัวพิมพ์เล็ก
     DatabaseMethods().Search(value).then((QuerySnapshot docs) {
-      print("ผลลัพธ์จาก Firestore: ${docs.docs.length} รายการ");
-
-      setState(() {
-        queryResultSet = docs.docs.map((doc) => doc.data()).toList();
-        tempSearchStore = List.from(queryResultSet);
-      });
-
-      if (tempSearchStore.isEmpty) {
-        print("ไม่พบผลลัพธ์การค้นหา");
+      if (docs.docs.isNotEmpty) {
+        setState(() {
+          queryResultSet = [];
+          for (var doc in docs.docs) {
+            queryResultSet.add(doc.data() as Map<String, dynamic>);
+          }
+          tempSearchStore = List.from(queryResultSet);
+          _isSearching = false;
+        });
+      } else {
+        // ลองดูว่าคอลเลกชันมีข้อมูลทั้งหมดกี่รายการ
+        FirebaseFirestore.instance.collection("users").get().then((allDocs) {
+          setState(() {
+            _isSearching = false;
+          });
+        });
       }
     }).catchError((error) {
       print("เกิดข้อผิดพลาดในการค้นหา: $error");
+      setState(() {
+        _isSearching = false;
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Colors.black,
-        body: Container(
-            child: Column(children: [
-          Padding(
-            padding:
-                const EdgeInsets.only(left: 20, right: 20, top: 50, bottom: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                search
-                    ? Expanded(
-                        child: TextField(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ส่วนหัว
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 5,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  if (!search)
+                    Text(
+                      'การสนทนา',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  if (search)
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
                         onChanged: (value) {
-                          initiateSearch(value.toUpperCase());
+                          initiateSearch(value);
                         },
+                        style: TextStyle(fontSize: 16),
                         decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'ค้นหา...',
-                            hintStyle: TextStyle(
-                                color: Colors.white,
-                                fontSize: 25,
-                                fontWeight: FontWeight.bold)),
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18.0,
-                            fontWeight: FontWeight.w500),
-                      ))
-                    : Text(
-                        'แชท',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 25,
-                            fontWeight: FontWeight.bold),
+                          hintText: 'ค้นหาผู้ใช้...',
+                          border: InputBorder.none,
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                        ),
                       ),
-                GestureDetector(
-                  onTap: () {
-                    search = true;
-                    setState(() {});
-                  },
-                  child: Container(
-                      padding: EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: search
-                          ? GestureDetector(
-                              onTap: () {
-                                search = false;
-                                setState(() {});
-                              },
-                              child: Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 25,
-                              ),
-                            )
-                          : Icon(
-                              Icons.search,
-                              color: Colors.white,
-                              size: 25,
-                            )),
-                )
-              ],
+                    ),
+                  Spacer(),
+                  IconButton(
+                    icon: Icon(
+                      search ? Icons.close : Icons.search,
+                      color: Colors.grey[700],
+                      size: 26,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        search = !search;
+                        if (!search) {
+                          _searchController.clear();
+                          queryResultSet = [];
+                          tempSearchStore = [];
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-            width: MediaQuery.of(context).size.width,
-            height: search
-                ? MediaQuery.of(context).size.height / 1.24
-                : MediaQuery.of(context).size.height / 1.24,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                search
-                    ? ListView(
-                        padding: EdgeInsets.only(left: 10.0, right: 10.0),
-                        primary: false,
-                        shrinkWrap: true,
-                        children: tempSearchStore.map((element) {
-                          return buildResultCard(element);
-                        }).toList())
+
+            // ส่วนค้นหาและแสดงผล
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                ),
+                child: search
+                    ? _isSearching
+                        ? Center(
+                            child: CircularProgressIndicator(
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.orange),
+                            ),
+                          )
+                        : ListView(
+                            padding: EdgeInsets.symmetric(vertical: 10),
+                            children: tempSearchStore.isEmpty
+                                ? [
+                                    Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 50),
+                                        child: Column(
+                                          children: [
+                                            Icon(Icons.search_off,
+                                                size: 64,
+                                                color: Colors.grey[400]),
+                                            SizedBox(height: 16),
+                                            Text(
+                                              'ไม่พบผู้ใช้',
+                                              style: TextStyle(
+                                                  fontSize: 16,
+                                                  color: Colors.grey[600]),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  ]
+                                : tempSearchStore.map((element) {
+                                    return buildResultCard(element);
+                                  }).toList(),
+                          )
                     : ChatRoomList(),
-              ],
+              ),
             ),
-          ),
-        ])));
+          ],
+        ),
+      ),
+    );
   }
 
   Widget buildResultCard(data) {
     return GestureDetector(
       onTap: () async {
-        search = false;
-        setState(() {});
+        setState(() {
+          search = false;
+          _searchController.clear();
+        });
 
         // ตรวจสอบว่าไม่ใช่การแชทกับตัวเอง
         if (myUserName == data['username']) {
           ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Cannot chat with yourself')));
+              SnackBar(content: Text('ไม่สามารถสนทนากับตัวเองได้')));
           return;
         }
 
@@ -252,91 +321,97 @@ class _MyWidgetState extends State<Chat> {
             ),
           );
         } catch (e) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('Error creating chat: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('เกิดข้อผิดพลาดในการสร้างห้องสนทนา: $e')));
         }
       },
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 8),
-        child: Material(
-          elevation: 5,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 5,
+              offset: Offset(0, 2),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(25),
-                    border: Border.all(
-                      color: Colors.grey.shade200,
-                      width: 1,
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.indigo.withOpacity(0.1),
+                  border: Border.all(
+                    color: Colors.indigo.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: data['photo'] != null && data['photo'].isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: Image.network(
+                          data['photo'],
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(Icons.person,
+                                color: Colors.orange[300], size: 32);
+                          },
+                        ),
+                      )
+                    : Icon(Icons.person, color: Colors.orange[300], size: 32),
+              ),
+              SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data["name"] ?? "ไม่ระบุชื่อ",
+                      style: TextStyle(
+                        color: Colors.black87,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(25),
-                    child: data['photo'] != null && data['photo'].isNotEmpty
-                        ? Image.network(
-                            data['photo'],
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Icon(Icons.person, color: Colors.grey);
-                            },
-                          )
-                        : Icon(Icons.person, color: Colors.grey),
-                  ),
-                ),
-                SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        data["name"] ?? "Unknown",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                    SizedBox(height: 5),
+                    Text(
+                      data['username'] ?? "",
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
                       ),
-                      SizedBox(height: 5),
-                      Text(
-                        data['username'] ?? "",
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: data['role'] == 'sitter'
+                      ? Colors.blue.withOpacity(0.1)
+                      : Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  data['role'] == 'sitter' ? 'ผู้รับเลี้ยง' : 'ผู้ใช้งาน',
+                  style: TextStyle(
                     color: data['role'] == 'sitter'
-                        ? Colors.blue.withOpacity(0.1)
-                        : Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    (data['role'] ?? "").toUpperCase(),
-                    style: TextStyle(
-                      color: data['role'] == 'sitter'
-                          ? Colors.blue[700]
-                          : Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+                        ? Colors.blue[700]
+                        : Colors.green[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -364,8 +439,13 @@ class ChatRoomListTile extends StatefulWidget {
 
 class _ChatRoomListState extends State<ChatRoomListTile> {
   String profilePicUrl = "", name = "", username = "", role = "";
+  bool _isLoading = true;
 
   getthisUserInfo() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     username =
         widget.chatRoomId.replaceAll("_", '').replaceAll(widget.myUsername, "");
 
@@ -377,6 +457,11 @@ class _ChatRoomListState extends State<ChatRoomListTile> {
         name = userData['name'] ?? '';
         profilePicUrl = userData['photo'] ?? '';
         role = userData['role'] ?? '';
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
+        _isLoading = false;
       });
     }
   }
@@ -388,7 +473,11 @@ class _ChatRoomListState extends State<ChatRoomListTile> {
   }
 
   String getTimeDisplay(String timestamp) {
-    // Add logic to format time display if needed
+    if (timestamp.isEmpty) return '';
+
+    // เพิ่มตรรกะการแสดงเวลาเพิ่มเติมถ้าต้องการ
+    // เช่น แปลงเป็น "เมื่อวาน", "วันนี้", "5 นาทีที่แล้ว" เป็นต้น
+
     return timestamp;
   }
 
@@ -407,8 +496,7 @@ class _ChatRoomListState extends State<ChatRoomListTile> {
                     )));
       },
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 8),
-        padding: EdgeInsets.all(12),
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -416,98 +504,138 @@ class _ChatRoomListState extends State<ChatRoomListTile> {
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
               spreadRadius: 1,
-              blurRadius: 3,
+              blurRadius: 5,
               offset: Offset(0, 2),
             ),
           ],
         ),
-        child: Row(
-          children: [
-            // Profile Picture
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.grey[200],
-              ),
-              child: profilePicUrl.isEmpty
-                  ? Center(child: CircularProgressIndicator())
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: Image.network(
-                        profilePicUrl,
-                        fit: BoxFit.cover,
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Row(
+            children: [
+              _isLoading
+                  ? Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        shape: BoxShape.circle,
                       ),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.orange),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.indigo.withOpacity(0.1),
+                        border: Border.all(
+                          color: Colors.indigo.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: profilePicUrl.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(30),
+                              child: Image.network(
+                                profilePicUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Icon(Icons.person,
+                                      color: Colors.indigo[300], size: 32);
+                                },
+                              ),
+                            )
+                          : Icon(Icons.person,
+                              color: Colors.indigo[300], size: 32),
                     ),
-            ),
-            SizedBox(width: 15),
-            // Chat Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        name.isNotEmpty ? name : 'Loading...',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        getTimeDisplay(widget.timestamp),
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 5),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.lastMessage,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      if (role.isNotEmpty)
-                        Container(
-                          margin: EdgeInsets.only(left: 8),
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: role == 'sitter'
-                                ? Colors.blue.withOpacity(0.1)
-                                : Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+              SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
                           child: Text(
-                            role.toUpperCase(),
+                            _isLoading
+                                ? 'กำลังโหลด...'
+                                : (name.isNotEmpty ? name : 'ไม่ระบุชื่อ'),
                             style: TextStyle(
-                              fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: role == 'sitter'
-                                  ? Colors.blue[700]
-                                  : Colors.green[700],
+                              fontSize: 16,
+                              color: Colors.black87,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (widget.timestamp.isNotEmpty)
+                          Text(
+                            getTimeDisplay(widget.timestamp),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.lastMessage.isEmpty
+                                ? 'ยังไม่มีข้อความ'
+                                : widget.lastMessage,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                ],
+                        if (role.isNotEmpty)
+                          Container(
+                            margin: EdgeInsets.only(left: 8),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: role == 'sitter'
+                                  ? Colors.blue.withOpacity(0.1)
+                                  : Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              role == 'sitter' ? 'ผู้รับเลี้ยง' : 'ผู้ใช้งาน',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: role == 'sitter'
+                                    ? Colors.blue[700]
+                                    : Colors.green[700],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
