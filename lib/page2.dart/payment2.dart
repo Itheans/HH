@@ -343,11 +343,126 @@ class _Payment2State extends State<Payment2> {
     );
   }
 
-// ฟังก์ชันใหม่เพื่อยืนยันการถอนเงิน
+// แก้ไขฟังก์ชัน _confirmWithdrawal ที่มีอยู่แล้ว
   Future<void> _confirmWithdrawal(int amount) async {
+    // เพิ่ม dialog เพื่อยืนยันรหัสผ่าน
+    final TextEditingController passwordController = TextEditingController();
+    final passwordFormKey = GlobalKey<FormState>();
+
+    bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('ยืนยันการถอนเงิน'),
+          content: Form(
+            key: passwordFormKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('กรุณากรอกรหัสผ่านเพื่อยืนยันการถอนเงิน ฿$amount'),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'รหัสผ่าน',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'กรุณากรอกรหัสผ่าน';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ยกเลิก'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (passwordFormKey.currentState!.validate()) {
+                  // ปิด dialog และส่งค่า true กลับไป
+                  Navigator.of(dialogContext).pop(true);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+              child: const Text('ยืนยัน'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // ถ้าผู้ใช้กดยกเลิกหรือปิด dialog ให้ยกเลิกการถอนเงิน
+    if (confirmed != true) {
+      return;
+    }
+
+    // ตรวจสอบรหัสผ่าน (ใช้ Firebase Authentication)
     try {
       setState(() => isLoading = true);
 
+      // ตรวจสอบรหัสผ่านกับ Firebase Auth
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null && user.email != null) {
+        try {
+          // สร้าง credential สำหรับตรวจสอบรหัสผ่าน
+          AuthCredential credential = EmailAuthProvider.credential(
+            email: user.email!,
+            password: passwordController.text,
+          );
+
+          // ตรวจสอบรหัสผ่าน
+          await user.reauthenticateWithCredential(credential);
+
+          // รหัสผ่านถูกต้อง ดำเนินการถอนเงิน
+          await _processWithdrawalAfterVerification(amount);
+        } on FirebaseAuthException catch (e) {
+          // รหัสผ่านไม่ถูกต้อง
+          setState(() => isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      } else {
+        // กรณีที่ไม่มีผู้ใช้ที่ล็อกอินอยู่
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ไม่พบข้อมูลผู้ใช้ กรุณาล็อกอินใหม่'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    } catch (e) {
+      print("Error in password verification: $e");
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาดในการตรวจสอบรหัสผ่าน: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // เพิ่มฟังก์ชันนี้หลังจากฟังก์ชัน _confirmWithdrawal
+  Future<void> _processWithdrawalAfterVerification(int amount) async {
+    try {
       // คำนวณยอดเงินใหม่หลังจากถอน
       double newEarnings = totalEarnings - amount;
       if (newEarnings < 0) newEarnings = 0; // ป้องกันยอดติดลบ
@@ -381,7 +496,7 @@ class _Payment2State extends State<Payment2> {
           'amount': amount,
           'type': 'withdraw',
           'timestamp': FieldValue.serverTimestamp(),
-          'status': 'completed', // เปลี่ยนจาก processing เป็น completed
+          'status': 'completed',
           'description': 'ถอนเงินไปยังบัญชีธนาคาร',
         });
       } catch (e) {
