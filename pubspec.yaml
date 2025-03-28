@@ -61,6 +61,7 @@ dependencies:
   http:
   table_calendar:
   fl_chart: ^0.63.0
+  slide_to_act:
   
  
 
