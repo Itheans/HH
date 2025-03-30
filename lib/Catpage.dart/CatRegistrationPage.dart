@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path/path.dart' as path;
+import 'package:uuid/uuid.dart';
 import 'package:myproject/Catpage.dart/vaccine_selection_page.dart';
 import 'cat.dart';
 
@@ -18,6 +23,10 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
   final TextEditingController descriptionController = TextEditingController();
   DateTime? birthDate;
   bool isLoading = false;
+
+  // เพิ่มตัวแปรสำหรับรูปภาพ
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
 
   Map<String, Map<String, bool>> vaccinationGroups = {
     'Core Vaccines': {
@@ -87,6 +96,8 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            _buildImagePicker(), // เพิ่มส่วนเลือกรูปภาพ
+                            const SizedBox(height: 20),
                             _buildTextField(
                                 controller: nameController,
                                 label: 'ชื่อ แมว',
@@ -138,6 +149,121 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
               ),
       ),
     );
+  }
+
+  // สร้าง Widget สำหรับเลือกรูปภาพ
+  Widget _buildImagePicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.photo, color: Colors.orange),
+            const SizedBox(width: 10),
+            const Text(
+              'รูปภาพแมว',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: _pickImage,
+          child: Container(
+            height: 200,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: _selectedImage == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_a_photo,
+                        size: 60,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'แตะเพื่อเลือกรูปภาพ',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: Image.file(
+                      _selectedImage!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ฟังก์ชันสำหรับเลือกรูปภาพจากแกลเลอรี่
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการเลือกรูปภาพ: $e')),
+      );
+    }
+  }
+
+  // ฟังก์ชันสำหรับอัปโหลดรูปภาพไปยัง Firebase Storage
+  Future<String?> _uploadImage() async {
+    if (_selectedImage == null) return null;
+
+    try {
+      // สร้างชื่อไฟล์ที่ไม่ซ้ำกันโดยใช้ UUID
+      final String fileName =
+          '${const Uuid().v4()}${path.extension(_selectedImage!.path)}';
+
+      // อ้างอิงไปยัง Firebase Storage
+      final Reference storageRef = FirebaseStorage.instance
+          .ref()
+          .child('cat_images')
+          .child(FirebaseAuth.instance.currentUser!.uid)
+          .child(fileName);
+
+      // อัปโหลดไฟล์
+      await storageRef.putFile(_selectedImage!);
+
+      // รับ URL สำหรับดาวน์โหลด
+      final String downloadURL = await storageRef.getDownloadURL();
+      return downloadURL;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ: $e')),
+      );
+      return null;
+    }
   }
 
   Widget _buildTextField({
@@ -314,11 +440,17 @@ class _CatRegistrationPageState extends State<CatRegistrationPage> {
         return;
       }
 
+      // อัปโหลดรูปภาพ (ถ้ามี)
+      String? imageUrl;
+      if (_selectedImage != null) {
+        imageUrl = await _uploadImage();
+      }
+
       Cat newCat = Cat(
         id: '', // กำหนดค่า id เป็นค่าว่าง
         name: nameController.text,
         breed: breedController.text,
-        imagePath: '', // ค่า imagePath สามารถแก้ไขในภายหลังได้
+        imagePath: imageUrl ?? '', // ใช้ URL รูปภาพที่อัปโหลด
         birthDate: Timestamp.fromDate(birthDate!),
         vaccinations: getSelectedVaccinations(),
         description: descriptionController.text, // ระบุค่า description
