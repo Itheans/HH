@@ -7,6 +7,8 @@ import 'package:myproject/pages.dart/chat.dart';
 import 'package:myproject/services/database.dart';
 import 'package:myproject/services/shared_pref.dart';
 import 'package:random_string/random_string.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 
 class ChatPage extends StatefulWidget {
   String name, profileurl, username, role;
@@ -63,7 +65,8 @@ class _ChatpageState extends State<ChatPage> {
     }
   }
 
-  Widget chatMessageTile(String message, bool sendByMe, String timestamp) {
+  Widget chatMessageTile(String message, bool sendByMe, String timestamp,
+      {String? imageUrl}) {
     return Align(
       alignment: sendByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -96,12 +99,60 @@ class _ChatpageState extends State<ChatPage> {
                   ),
                 ],
               ),
-              child: Text(
-                message,
-                style: TextStyle(
-                  color: sendByMe ? Colors.white : Colors.black87,
-                  fontSize: 16,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (message.isNotEmpty)
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: sendByMe ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                      ),
+                    ),
+                  if (imageUrl != null && imageUrl.isNotEmpty)
+                    Column(
+                      children: [
+                        if (message.isNotEmpty) SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                height: 150,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes !=
+                                            null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                height: 100,
+                                width: double.infinity,
+                                color: Colors.grey[300],
+                                child: Icon(
+                                  Icons.broken_image,
+                                  size: 40,
+                                  color: Colors.grey[600],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
             Padding(
@@ -145,8 +196,8 @@ class _ChatpageState extends State<ChatPage> {
         });
   }
 
-  addMessage(bool sendClicked) async {
-    if (messageController.text != "") {
+  addMessage(bool sendClicked, {String? imageUrl}) async {
+    if (messageController.text != "" || imageUrl != null) {
       setState(() {
         _isSending = true;
       });
@@ -163,6 +214,12 @@ class _ChatpageState extends State<ChatPage> {
         "time": FieldValue.serverTimestamp(),
         "imgUrl": myProfilePic,
       };
+
+      // ถ้ามีรูปภาพ ให้เพิ่มลงใน map
+      if (imageUrl != null) {
+        messageInfoMap["imageUrl"] = imageUrl;
+      }
+
       messageId ??= randomAlphaNumeric(10);
 
       try {
@@ -170,7 +227,7 @@ class _ChatpageState extends State<ChatPage> {
             .addMessage(chatRoomId!, messageId!, messageInfoMap);
 
         Map<String, dynamic> lastMessageInfoMap = {
-          "lastMessage": message,
+          "lastMessage": imageUrl != null ? "📷 รูปภาพ" : message,
           "lastMessageSendTs": formattedDate,
           "time": FieldValue.serverTimestamp(),
           "lastMessageSendBy": myUserName,
@@ -229,6 +286,23 @@ class _ChatpageState extends State<ChatPage> {
 
         // ส่งข้อความ
         addMessage(true);
+
+        // ตรวจสอบและส่งรูปภาพ
+        if (result['imagePath'] != null && result['capturedImage'] != null) {
+          // อัปโหลดรูปภาพไปยัง Firebase Storage
+          String? imageUrl = await _uploadImage(result['capturedImage']);
+
+          if (imageUrl != null) {
+            // สร้างข้อความสำหรับส่งรูปภาพ
+            String photoMessage = "📷 ภาพถ่ายการมาดูแมว\n$imageUrl";
+
+            // บันทึกข้อความลงในกล่องข้อความ
+            messageController.text = photoMessage;
+
+            // ส่งข้อความ
+            addMessage(true);
+          }
+        }
       }
 
       // กรณีเช็คเอาท์
@@ -244,7 +318,56 @@ class _ChatpageState extends State<ChatPage> {
 
         // ส่งข้อความ
         addMessage(true);
+
+        // ตรวจสอบและส่งรูปภาพ
+        if (result['imagePath'] != null && result['capturedImage'] != null) {
+          // อัปโหลดรูปภาพไปยัง Firebase Storage
+          String? imageUrl = await _uploadImage(result['capturedImage']);
+
+          if (imageUrl != null) {
+            // สร้างข้อความสำหรับส่งรูปภาพ
+            String photoMessage = "📷 ภาพถ่ายหลังการดูแลแมว\n$imageUrl";
+
+            // บันทึกข้อความลงในกล่องข้อความ
+            messageController.text = photoMessage;
+
+            // ส่งข้อความ
+            addMessage(true);
+          }
+        }
       }
+    }
+  }
+
+  Future<String?> _uploadImage(File image) async {
+    try {
+      // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน
+      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
+
+      // อ้างอิงไปยัง Firebase Storage
+      Reference storageRef = FirebaseStorage.instance
+          .ref()
+          .child('chat_images')
+          .child(chatRoomId ?? 'general')
+          .child('$fileName.jpg');
+
+      // อัปโหลดไฟล์
+      UploadTask uploadTask = storageRef.putFile(image);
+      TaskSnapshot taskSnapshot = await uploadTask;
+
+      // รับ URL สำหรับดาวน์โหลด
+      String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+
+      return downloadUrl;
+    } catch (e) {
+      print("Error uploading image: $e");
+
+      // แจ้งเตือนผู้ใช้
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถอัปโหลดรูปภาพได้: $e')),
+      );
+
+      return null;
     }
   }
 

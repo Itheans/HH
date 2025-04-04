@@ -86,6 +86,7 @@ class _TodayscreenState extends State<Todayscreen> {
   }
 
 // เพิ่มฟังก์ชันแสดงไดอะล็อกยืนยัน
+  // ฟังก์ชันแสดงไดอะล็อกยืนยันการเช็คอิน
   void _showCheckInConfirmDialog() {
     final noteController = TextEditingController();
 
@@ -140,6 +141,8 @@ class _TodayscreenState extends State<Todayscreen> {
                     'checkedIn': true,
                     'checkInTime': _checkInTime.format(context),
                     'note': noteController.text,
+                    'imagePath': _imagePath, // ส่งพาธของรูปภาพกลับไป
+                    'capturedImage': _capturedImage, // ส่งไฟล์รูปภาพกลับไป
                   });
                 }
               },
@@ -474,6 +477,9 @@ class _TodayscreenState extends State<Todayscreen> {
                             'checkedOut': true,
                             'checkOutTime': _checkOutTime?.format(context) ??
                                 TimeOfDay.now().format(context),
+                            'imagePath': _imagePath, // ส่งพาธของรูปภาพกลับไป
+                            'capturedImage':
+                                _capturedImage, // ส่งไฟล์รูปภาพกลับไป
                           });
                         });
                       }

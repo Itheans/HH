@@ -7,6 +7,8 @@ import 'package:myproject/pages.dart/chat.dart';
 import 'package:myproject/services/database.dart';
 import 'package:myproject/services/shared_pref.dart';
 import 'package:random_string/random_string.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 
 class ChatPage extends StatefulWidget {
   String name, profileurl, username, role;
@@ -145,8 +147,8 @@ class _ChatpageState extends State<ChatPage> {
         });
   }
 
-  addMessage(bool sendClicked) async {
-    if (messageController.text != "") {
+  addMessage(bool sendClicked, {String? imageUrl}) async {
+    if (messageController.text != "" || imageUrl != null) {
       setState(() {
         _isSending = true;
       });
@@ -163,6 +165,12 @@ class _ChatpageState extends State<ChatPage> {
         "time": FieldValue.serverTimestamp(),
         "imgUrl": myProfilePic,
       };
+
+      // ถ้ามีรูปภาพ ให้เพิ่มลงใน map
+      if (imageUrl != null) {
+        messageInfoMap["imageUrl"] = imageUrl;
+      }
+
       messageId ??= randomAlphaNumeric(10);
 
       try {
@@ -170,7 +178,7 @@ class _ChatpageState extends State<ChatPage> {
             .addMessage(chatRoomId!, messageId!, messageInfoMap);
 
         Map<String, dynamic> lastMessageInfoMap = {
-          "lastMessage": message,
+          "lastMessage": imageUrl != null ? "📷 รูปภาพ" : message,
           "lastMessageSendTs": formattedDate,
           "time": FieldValue.serverTimestamp(),
           "lastMessageSendBy": myUserName,
@@ -229,6 +237,23 @@ class _ChatpageState extends State<ChatPage> {
 
         // ส่งข้อความ
         addMessage(true);
+
+        // ตรวจสอบและส่งรูปภาพ
+        if (result['imagePath'] != null && result['capturedImage'] != null) {
+          // อัปโหลดรูปภาพไปยัง Firebase Storage
+          String? imageUrl = await _uploadImage(result['capturedImage']);
+
+          if (imageUrl != null) {
+            // สร้างข้อความสำหรับส่งรูปภาพ
+            String photoMessage = "📷 ภาพถ่ายการมาดูแมว\n$imageUrl";
+
+            // บันทึกข้อความลงในกล่องข้อความ
+            messageController.text = photoMessage;
+
+            // ส่งข้อความ
+            addMessage(true);
+          }
+        }
       }
 
       // กรณีเช็คเอาท์
@@ -244,7 +269,56 @@ class _ChatpageState extends State<ChatPage> {
 
         // ส่งข้อความ
         addMessage(true);
+
+        // ตรวจสอบและส่งรูปภาพ
+        if (result['imagePath'] != null && result['capturedImage'] != null) {
+          // อัปโหลดรูปภาพไปยัง Firebase Storage
+          String? imageUrl = await _uploadImage(result['capturedImage']);
+
+          if (imageUrl != null) {
+            // สร้างข้อความสำหรับส่งรูปภาพ
+            String photoMessage = "📷 ภาพถ่ายหลังการดูแลแมว\n$imageUrl";
+
+            // บันทึกข้อความลงในกล่องข้อความ
+            messageController.text = photoMessage;
+
+            // ส่งข้อความ
+            addMessage(true);
+          }
+        }
       }
+    }
+  }
+
+  Future<String?> _uploadImage(File image) async {
+    try {
+      // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน
+      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
+
+      // อ้างอิงไปยัง Firebase Storage
+      Reference storageRef = FirebaseStorage.instance
+          .ref()
+          .child('chat_images')
+          .child(chatRoomId ?? 'general')
+          .child('$fileName.jpg');
+
+      // อัปโหลดไฟล์
+      UploadTask uploadTask = storageRef.putFile(image);
+      TaskSnapshot taskSnapshot = await uploadTask;
+
+      // รับ URL สำหรับดาวน์โหลด
+      String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+
+      return downloadUrl;
+    } catch (e) {
+      print("Error uploading image: $e");
+
+      // แจ้งเตือนผู้ใช้
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถอัปโหลดรูปภาพได้: $e')),
+      );
+
+      return null;
     }
   }
 
