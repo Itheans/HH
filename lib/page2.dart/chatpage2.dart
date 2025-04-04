@@ -286,27 +286,20 @@ class _ChatpageState extends State<ChatPage> {
         String checkInTime = result['checkInTime'] ?? DateTime.now().toString();
         String additionalNote = result['note'] ?? '';
 
-        // สร้างข้อความ
-        String message = "✅ ฉันได้มาดูแมวแล้วเมื่อ $checkInTime";
-        if (additionalNote.isNotEmpty) {
-          message += "\n📝 หมายเหตุ: $additionalNote";
-        }
-
-        // บันทึกข้อความลงในกล่องข้อความ
-        messageController.text = message;
-
-        // ส่งข้อความ
-        addMessage(true);
-
         // ตรวจสอบและส่งรูปภาพ
         if (result['imagePath'] != null && result['capturedImage'] != null) {
           // อัปโหลดรูปภาพไปยัง Firebase Storage
           String? imageUrl = await _uploadImage(result['capturedImage']);
 
           if (imageUrl != null) {
-            // เพิ่มข้อความเพื่อส่งรูปภาพโดยตรง (ไม่ใส่ URL ในข้อความ)
+            // สร้างข้อความพร้อมกับรูปภาพ (ส่งเพียงครั้งเดียว)
+            String message = "✅ ฉันได้มาดูแมวแล้วเมื่อ $checkInTime";
+            if (additionalNote.isNotEmpty) {
+              message += "\n📝 หมายเหตุ: $additionalNote";
+            }
+
             Map<String, dynamic> messageInfoMap = {
-              "message": "📷 ภาพถ่ายการมาดูแมว",
+              "message": message,
               "sendBy": myUserName,
               "ts": DateFormat('h:mm a').format(DateTime.now()),
               "time": FieldValue.serverTimestamp(),
@@ -328,11 +321,26 @@ class _ChatpageState extends State<ChatPage> {
             await DatabaseMethods()
                 .updateLastMessageSend(chatRoomId!, lastMessageInfoMap);
           }
+        } else {
+          // ถ้าไม่มีรูปภาพ ส่งเฉพาะข้อความ
+          String message = "✅ ฉันได้มาดูแมวแล้วเมื่อ $checkInTime";
+          if (additionalNote.isNotEmpty) {
+            message += "\n📝 หมายเหตุ: $additionalNote";
+          }
+
+          // บันทึกข้อความลงในกล่องข้อความ
+          messageController.text = message;
+
+          // ส่งข้อความ
+          addMessage(true);
         }
       }
 
       // เพิ่มโค้ดคล้ายกันสำหรับกรณีเช็คเอาท์
-      // ...
+      if (result['checkedOut'] == true) {
+        // โค้ดสำหรับเช็คเอาท์ให้ทำคล้ายกัน แต่เปลี่ยนข้อความ
+        // ...
+      }
     }
   }
 
