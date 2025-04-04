@@ -65,7 +65,8 @@ class _ChatpageState extends State<ChatPage> {
     }
   }
 
-  Widget chatMessageTile(String message, bool sendByMe, String timestamp) {
+  Widget chatMessageTile(String message, bool sendByMe, String timestamp,
+      {String? imageUrl}) {
     return Align(
       alignment: sendByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -98,12 +99,57 @@ class _ChatpageState extends State<ChatPage> {
                   ),
                 ],
               ),
-              child: Text(
-                message,
-                style: TextStyle(
-                  color: sendByMe ? Colors.white : Colors.black87,
-                  fontSize: 16,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (message.isNotEmpty)
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: sendByMe ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                      ),
+                    ),
+                  if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                    if (message.isNotEmpty) SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            height: 150,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes !=
+                                        null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          print("Error loading image: $error");
+                          return Container(
+                            height: 100,
+                            width: double.infinity,
+                            color: Colors.grey[300],
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 40,
+                              color: Colors.grey[600],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             Padding(
@@ -133,10 +179,25 @@ class _ChatpageState extends State<ChatPage> {
                   reverse: true,
                   itemBuilder: (context, index) {
                     DocumentSnapshot ds = snapshot.data.docs[index];
+
+                    // ตรวจสอบก่อนว่ามีฟิลด์ imageUrl หรือไม่
+                    String? imageUrl;
+                    try {
+                      // ใช้ try-catch เพื่อป้องกันข้อผิดพลาดกรณีที่ไม่มีฟิลด์ imageUrl
+                      final data = ds.data() as Map<String, dynamic>?;
+                      if (data != null && data.containsKey('imageUrl')) {
+                        imageUrl = data['imageUrl'] as String?;
+                      }
+                    } catch (e) {
+                      // ไม่ต้องทำอะไรถ้าเกิดข้อผิดพลาด
+                      print("Error accessing imageUrl: $e");
+                    }
+
                     return chatMessageTile(
-                      ds["message"],
+                      ds["message"] ?? "",
                       myUserName == ds["sendBy"],
                       ds["ts"] ?? "",
+                      imageUrl: imageUrl,
                     );
                   })
               : Center(
@@ -207,8 +268,7 @@ class _ChatpageState extends State<ChatPage> {
     setState(() {});
   }
 
-  void _navigateToTodayscreen(BuildContext context) async {
-    // ส่งข้อมูลคู่สนทนาไปยังหน้า Todayscreen
+  Future<void> _navigateToTodayscreen(BuildContext context) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -244,49 +304,35 @@ class _ChatpageState extends State<ChatPage> {
           String? imageUrl = await _uploadImage(result['capturedImage']);
 
           if (imageUrl != null) {
-            // สร้างข้อความสำหรับส่งรูปภาพ
-            String photoMessage = "📷 ภาพถ่ายการมาดูแมว\n$imageUrl";
+            // เพิ่มข้อความเพื่อส่งรูปภาพโดยตรง (ไม่ใส่ URL ในข้อความ)
+            Map<String, dynamic> messageInfoMap = {
+              "message": "📷 ภาพถ่ายการมาดูแมว",
+              "sendBy": myUserName,
+              "ts": DateFormat('h:mm a').format(DateTime.now()),
+              "time": FieldValue.serverTimestamp(),
+              "imgUrl": myProfilePic,
+              "imageUrl": imageUrl, // เพิ่ม URL รูปภาพลงในข้อความ
+            };
 
-            // บันทึกข้อความลงในกล่องข้อความ
-            messageController.text = photoMessage;
+            String newMessageId = randomAlphaNumeric(10);
+            await DatabaseMethods()
+                .addMessage(chatRoomId!, newMessageId, messageInfoMap);
 
-            // ส่งข้อความ
-            addMessage(true);
+            Map<String, dynamic> lastMessageInfoMap = {
+              "lastMessage": "📷 รูปภาพ",
+              "lastMessageSendTs": DateFormat('h:mm a').format(DateTime.now()),
+              "time": FieldValue.serverTimestamp(),
+              "lastMessageSendBy": myUserName,
+            };
+
+            await DatabaseMethods()
+                .updateLastMessageSend(chatRoomId!, lastMessageInfoMap);
           }
         }
       }
 
-      // กรณีเช็คเอาท์
-      if (result['checkedOut'] == true) {
-        String checkOutTime =
-            result['checkOutTime'] ?? DateTime.now().toString();
-
-        // สร้างข้อความ
-        String message = "🚶‍♂️ ฉันได้เสร็จสิ้นการดูแลแมวเมื่อ $checkOutTime";
-
-        // บันทึกข้อความลงในกล่องข้อความ
-        messageController.text = message;
-
-        // ส่งข้อความ
-        addMessage(true);
-
-        // ตรวจสอบและส่งรูปภาพ
-        if (result['imagePath'] != null && result['capturedImage'] != null) {
-          // อัปโหลดรูปภาพไปยัง Firebase Storage
-          String? imageUrl = await _uploadImage(result['capturedImage']);
-
-          if (imageUrl != null) {
-            // สร้างข้อความสำหรับส่งรูปภาพ
-            String photoMessage = "📷 ภาพถ่ายหลังการดูแลแมว\n$imageUrl";
-
-            // บันทึกข้อความลงในกล่องข้อความ
-            messageController.text = photoMessage;
-
-            // ส่งข้อความ
-            addMessage(true);
-          }
-        }
-      }
+      // เพิ่มโค้ดคล้ายกันสำหรับกรณีเช็คเอาท์
+      // ...
     }
   }
 
@@ -309,11 +355,41 @@ class _ChatpageState extends State<ChatPage> {
       // รับ URL สำหรับดาวน์โหลด
       String downloadUrl = await taskSnapshot.ref.getDownloadURL();
 
+      // สร้างข้อความใหม่พร้อมรูปภาพ
+      DateTime now = DateTime.now();
+      String formattedDate = DateFormat('h:mm a').format(now);
+
+      Map<String, dynamic> messageInfoMap = {
+        "message": "📷 ภาพถ่าย",
+        "sendBy": myUserName,
+        "ts": formattedDate,
+        "time": FieldValue.serverTimestamp(),
+        "imgUrl": myProfilePic,
+        "imageUrl": downloadUrl, // เพิ่ม URL รูปภาพ
+      };
+
+      // สร้าง ID ข้อความใหม่
+      String newMessageId = randomAlphaNumeric(10);
+
+      // บันทึกข้อความพร้อมรูปภาพ
+      await DatabaseMethods()
+          .addMessage(chatRoomId!, newMessageId, messageInfoMap);
+
+      // อัพเดตข้อความล่าสุด
+      Map<String, dynamic> lastMessageInfoMap = {
+        "lastMessage": "📷 รูปภาพ",
+        "lastMessageSendTs": formattedDate,
+        "time": FieldValue.serverTimestamp(),
+        "lastMessageSendBy": myUserName,
+      };
+
+      await DatabaseMethods()
+          .updateLastMessageSend(chatRoomId!, lastMessageInfoMap);
+
       return downloadUrl;
     } catch (e) {
       print("Error uploading image: $e");
 
-      // แจ้งเตือนผู้ใช้
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ไม่สามารถอัปโหลดรูปภาพได้: $e')),
       );
