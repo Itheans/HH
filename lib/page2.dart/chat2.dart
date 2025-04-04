@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:myproject/page2.dart/chat2.dart';
 import 'package:myproject/pages.dart/chatpage.dart';
+import 'package:myproject/pages.dart/todayscreen.dart';
 import 'package:myproject/services/database.dart';
 import 'package:myproject/services/shared_pref.dart';
 import 'package:myproject/widget/widget_support.dart';
@@ -201,6 +202,23 @@ class _MyWidgetState extends State<Chat> {
                       ),
                     ),
                   Spacer(),
+
+                  // เพิ่มปุ่มสำหรับไปที่หน้า Todayscreen
+                  IconButton(
+                    icon: Icon(
+                      Icons.access_time, // ใช้ icon ที่เกี่ยวกับเวลา
+                      color: Colors.orange,
+                      size: 26,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => Todayscreen()),
+                      );
+                    },
+                    tooltip: 'ไปที่หน้าบันทึกเวลา',
+                  ),
+
                   IconButton(
                     icon: Icon(
                       search ? Icons.close : Icons.search,
@@ -221,6 +239,8 @@ class _MyWidgetState extends State<Chat> {
                 ],
               ),
             ),
+
+            // ส่วนที่เหลือคงเดิม...
 
             // ส่วนค้นหาและแสดงผล
             Expanded(

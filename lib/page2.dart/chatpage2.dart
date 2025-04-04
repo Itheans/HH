@@ -1,5 +1,5 @@
 import 'dart:math';
-
+import 'package:myproject/pages.dart/todayscreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -199,12 +199,153 @@ class _ChatpageState extends State<ChatPage> {
     setState(() {});
   }
 
+  void _navigateToTodayscreen(BuildContext context) async {
+    // ส่งข้อมูลคู่สนทนาไปยังหน้า Todayscreen
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Todayscreen(
+          chatRoomId: chatRoomId,
+          receiverName: widget.name,
+          senderUsername: myUserName,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      // กรณีเช็คอิน
+      if (result['checkedIn'] == true) {
+        String checkInTime = result['checkInTime'] ?? DateTime.now().toString();
+        String additionalNote = result['note'] ?? '';
+
+        // สร้างข้อความ
+        String message = "✅ ฉันได้มาดูแมวแล้วเมื่อ $checkInTime";
+        if (additionalNote.isNotEmpty) {
+          message += "\n📝 หมายเหตุ: $additionalNote";
+        }
+
+        // บันทึกข้อความลงในกล่องข้อความ
+        messageController.text = message;
+
+        // ส่งข้อความ
+        addMessage(true);
+      }
+
+      // กรณีเช็คเอาท์
+      if (result['checkedOut'] == true) {
+        String checkOutTime =
+            result['checkOutTime'] ?? DateTime.now().toString();
+
+        // สร้างข้อความ
+        String message = "🚶‍♂️ ฉันได้เสร็จสิ้นการดูแลแมวเมื่อ $checkOutTime";
+
+        // บันทึกข้อความลงในกล่องข้อความ
+        messageController.text = message;
+
+        // ส่งข้อความ
+        addMessage(true);
+      }
+    }
+  }
+
+  // ฟังก์ชันแสดงไดอะล็อกยืนยันการบันทึกการมาดูแมว
+  void _showCheckInDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 10),
+              Text('บันทึกการมาดูแมว'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('คุณต้องการบันทึกการมาดูแมวและแจ้ง ${widget.name} หรือไม่?'),
+              SizedBox(height: 15),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'ระบุข้อความเพิ่มเติม (ถ้ามี)',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+                maxLines: 2,
+                controller: TextEditingController(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ยกเลิก'),
+            ),
+            ElevatedButton.icon(
+              icon: Icon(Icons.check),
+              label: Text('บันทึก'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+              ),
+              onPressed: () {
+                // รับข้อความเพิ่มเติม (ถ้ามี)
+                String additionalMessage = '';
+                if (context.findRenderObject() != null) {
+                  final dialogContext = context;
+                  final textField =
+                      dialogContext.findAncestorWidgetOfExactType<TextField>();
+                  if (textField != null && textField.controller != null) {
+                    additionalMessage = textField.controller!.text;
+                  }
+                }
+
+                Navigator.pop(context);
+                _sendCheckInMessage(additionalMessage);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ฟังก์ชันส่งข้อความบันทึกการมาดูแมว
+  void _sendCheckInMessage(String additionalMessage) {
+    // สร้างข้อความแจ้งเตือน
+    final now = DateTime.now();
+    final formattedTime = DateFormat('dd/MM/yyyy HH:mm').format(now);
+
+    String message = "✅ ฉันได้มาดูแมวแล้วเมื่อ $formattedTime";
+    if (additionalMessage.isNotEmpty) {
+      message += "\n📝 หมายเหตุ: $additionalMessage";
+    }
+
+    // บันทึกข้อความลงในกล่องข้อความ
+    messageController.text = message;
+
+    // ส่งข้อความ
+    addMessage(true);
+
+    // แสดง SnackBar แจ้งผู้ใช้
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('บันทึกการมาดูแมวเรียบร้อยแล้ว'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.orange.shade500,
         elevation: 0,
         automaticallyImplyLeading: false,
         flexibleSpace: SafeArea(
@@ -257,6 +398,19 @@ class _ChatpageState extends State<ChatPage> {
                     ],
                   ),
                 ),
+
+                // เพิ่มปุ่มไปที่หน้า Todayscreen
+                IconButton(
+                  icon: Icon(
+                    Icons.access_time,
+                    color: Colors.white,
+                  ),
+                  onPressed: () {
+                    _navigateToTodayscreen(context);
+                  },
+                  tooltip: 'บันทึกการมาดูแมว',
+                ),
+
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
@@ -272,6 +426,8 @@ class _ChatpageState extends State<ChatPage> {
           ),
         ),
       ),
+      // ส่วนที่เหลือของ build method ยังคงเหมือนเดิม
+      // ส่วนที่เหลือของ build method
       body: Stack(
         children: [
           Container(
