@@ -184,6 +184,7 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
     }
   }
 
+  // แก้ไขฟังก์ชัน _completeBooking (ประมาณบรรทัด 280)
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -226,6 +227,7 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
         transaction.update(_firestore.collection('bookings').doc(bookingId), {
           'status': 'completed',
           'completedAt': FieldValue.serverTimestamp(),
+          'paymentStatus': 'completed', // เพิ่มสถานะการชำระเงิน
         });
 
         // อัพเดตยอดเงินใน wallet

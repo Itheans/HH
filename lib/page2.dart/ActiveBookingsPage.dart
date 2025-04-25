@@ -78,6 +78,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
     }
   }
 
+  // ใน _completeBooking method ที่ประมาณบรรทัด 80
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -120,6 +121,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
         transaction.update(_firestore.collection('bookings').doc(bookingId), {
           'status': 'completed',
           'completedAt': FieldValue.serverTimestamp(),
+          'paymentStatus': 'completed', // เพิ่มสถานะการชำระเงิน
         });
 
         // อัพเดตยอดเงินใน wallet
@@ -145,9 +147,6 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
 
       // อัพเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(walletStr);
-
-      // รีโหลดข้อมูล
-      _loadActiveBookings();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
