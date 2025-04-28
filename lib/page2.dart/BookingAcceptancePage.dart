@@ -146,7 +146,7 @@ class _BookingAcceptancePageState extends State<BookingAcceptancePage> {
     }
   }
 
-  // เพิ่มฟังก์ชัน _completeBooking ใหม่ในคลาส _BookingAcceptancePageState (เพิ่มในบรรทัดประมาณ 200)
+  // แก้ไขฟังก์ชัน _completeBooking (ประมาณบรรทัด 300)
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -189,6 +189,7 @@ class _BookingAcceptancePageState extends State<BookingAcceptancePage> {
         transaction.update(_firestore.collection('bookings').doc(bookingId), {
           'status': 'completed',
           'completedAt': FieldValue.serverTimestamp(),
+          'paymentStatus': 'completed', // เพิ่มสถานะการชำระเงิน
         });
 
         // อัพเดตยอดเงินใน wallet
@@ -216,19 +217,15 @@ class _BookingAcceptancePageState extends State<BookingAcceptancePage> {
       await SharedPreferenceHelper().saveUserWallet(walletStr);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'การดูแลเสร็จสิ้นเรียบร้อยแล้ว เพิ่มรายได้ ฿${bookingAmount.toStringAsFixed(0)}'),
+        const SnackBar(
+          content: Text('การดูแลเสร็จสิ้นเรียบร้อยแล้ว'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       print('Error completing booking: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('เกิดข้อผิดพลาดในการอัพเดทสถานะ: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
       );
     }
   }

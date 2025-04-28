@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:myproject/pages.dart/buttomnav.dart';
 import 'package:myproject/pages.dart/sitterscreen/bookingService.dart';
 import 'package:myproject/services/shared_pref.dart';
 
@@ -117,13 +118,18 @@ class _BookingScreenState extends State<BookingScreen> {
 
         if (!mounted) return;
 
-        // Show success message and navigate back
+// Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(
                   'จองสำเร็จ หักเงินจากกระเป๋าเงินแล้ว ฿$totalPrice บาท (เหลือ ฿$newWalletStr)')),
         );
-        Navigator.of(context).pop();
+
+// Navigate to home screen instead of just popping
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => BottomNav()),
+          (route) => false,
+        );
 
         return;
       }
@@ -179,7 +185,10 @@ class _BookingScreenState extends State<BookingScreen> {
             content: Text(
                 'จองสำเร็จ หักเงินจากกระเป๋าเงินแล้ว ฿$totalPrice บาท (เหลือ ฿$newWalletStr)')),
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => BottomNav()),
+        (route) => false,
+      );
     } catch (e) {
       if (!mounted) return;
 

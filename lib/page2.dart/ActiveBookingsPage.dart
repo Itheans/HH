@@ -78,6 +78,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
     }
   }
 
+  // ใน _completeBooking method ที่ประมาณบรรทัด 80
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -111,25 +112,34 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
         currentWallet = double.tryParse(walletStr) ?? 0;
       }
 
+      // คำนวณยอดเงินใหม่หลังจากเพิ่มรายได้
       double newWallet = currentWallet + bookingAmount;
       String walletStr = newWallet.toStringAsFixed(0);
 
-      // อัพเดตสถานะงานและเพิ่มยอดเงินใน wallet พร้อมกัน
-      await _firestore.runTransaction((transaction) async {
-        // อัพเดตสถานะงาน
-        transaction.update(_firestore.collection('bookings').doc(bookingId), {
-          'status': 'completed',
-          'completedAt': FieldValue.serverTimestamp(),
-        });
+      // เพิ่ม logging เพื่อตรวจสอบค่า
+      print("DEBUG: Current wallet: $currentWallet");
+      print("DEBUG: Booking amount: $bookingAmount");
+      print("DEBUG: New wallet: $newWallet");
 
-        // อัพเดตยอดเงินใน wallet
-        transaction
-            .update(_firestore.collection('users').doc(currentUser.uid), {
-          'wallet': walletStr,
-        });
+      // ใช้ writeBatch แทน transaction เพื่อความแน่นอน
+      WriteBatch batch = _firestore.batch();
+
+      // อัพเดตสถานะงาน
+      batch.update(_firestore.collection('bookings').doc(bookingId), {
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+        'paymentStatus': 'completed',
       });
 
-      // บันทึกประวัติการทำธุรกรรม
+      // อัพเดตยอดเงินใน wallet
+      batch.update(_firestore.collection('users').doc(currentUser.uid), {
+        'wallet': walletStr,
+      });
+
+      // ดำเนินการ batch
+      await batch.commit();
+
+      // บันทึกประวัติการทำธุรกรรม (ทำแยกเพื่อให้แน่ใจว่า batch ข้างบนสมบูรณ์ก่อน)
       await _firestore
           .collection('users')
           .doc(currentUser.uid)
@@ -146,9 +156,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
       // อัพเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(walletStr);
 
-      // รีโหลดข้อมูล
-      _loadActiveBookings();
-
+      // แจ้งเตือนผู้ใช้
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -156,6 +164,9 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
           backgroundColor: Colors.green,
         ),
       );
+
+      // รีโหลดข้อมูลหลังจากทำงานเสร็จ
+      _loadActiveBookings();
     } catch (e) {
       print('Error completing booking: $e');
       ScaffoldMessenger.of(context).showSnackBar(

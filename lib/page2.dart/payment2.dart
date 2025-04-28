@@ -48,44 +48,53 @@ class _Payment2State extends State<Payment2> {
   Future<void> _loadUserData() async {
     setState(() => isLoading = true);
     try {
-      // ดึงข้อมูลจาก SharedPreferences
-      wallet = await SharedPreferenceHelper().getUserWallet();
-      id = await SharedPreferenceHelper().getUserId();
+      // ตรวจสอบการเชื่อมต่อกับ Firestore
+      bool hasConnection = await _checkFirestoreConnection();
+      if (!hasConnection) {
+        throw Exception("ไม่สามารถเชื่อมต่อกับ Firestore ได้");
+      }
 
-      // ถ้าไม่มีข้อมูลใน SharedPreferences ให้ดึงจาก Firestore
-      if (wallet == null || wallet!.isEmpty) {
-        if (_currentUser != null) {
-          DocumentSnapshot userDoc =
-              await _firestore.collection('users').doc(_currentUser!.uid).get();
+      // ดึงข้อมูลจาก Firestore โดยตรง (จะเป็นข้อมูลล่าสุดเสมอ)
+      if (_currentUser != null) {
+        DocumentSnapshot userDoc =
+            await _firestore.collection('users').doc(_currentUser!.uid).get();
 
-          if (wallet == null || wallet!.isEmpty) {
-            wallet = "0";
-            await SharedPreferenceHelper().saveUserWallet("0");
+        if (userDoc.exists) {
+          Map<String, dynamic> userData =
+              userDoc.data() as Map<String, dynamic>;
+          if (userData.containsKey('wallet')) {
+            wallet = userData['wallet'] ?? "0";
+
+            // ตรวจสอบค่าและแก้ไขถ้าจำเป็น
+            double walletAmount = double.tryParse(wallet!) ?? 0;
+            if (walletAmount < 0) walletAmount = 0;
+            wallet = walletAmount.toStringAsFixed(0);
+
+            // อัพเดท SharedPreferences
+            await SharedPreferenceHelper().saveUserWallet(wallet!);
           } else {
-            // ถ้ายังไม่มีข้อมูล ให้คำนวณรายได้ทั้งหมด
-            await _calculateTotalEarnings();
-            wallet = totalEarnings.toStringAsFixed(0);
-
-            // บันทึกค่าลง Firestore
+            wallet = "0";
             await _firestore
                 .collection('users')
                 .doc(_currentUser!.uid)
                 .update({'wallet': wallet});
-
-            // บันทึกลง SharedPreferences
             await SharedPreferenceHelper().saveUserWallet(wallet!);
           }
         } else {
           wallet = "0";
         }
+      } else {
+        wallet = await SharedPreferenceHelper().getUserWallet() ?? "0";
       }
+
+      id = await SharedPreferenceHelper().getUserId();
 
       // อัพเดต totalEarnings เพื่อแสดงในหน้าจอ
       totalEarnings = double.tryParse(wallet!) ?? 0;
     } catch (e) {
       print("Error loading user data: $e");
-      wallet = "0";
-      totalEarnings = 0;
+      wallet = await SharedPreferenceHelper().getUserWallet() ?? "0";
+      totalEarnings = double.tryParse(wallet!) ?? 0;
     } finally {
       setState(() => isLoading = false);
     }
@@ -110,6 +119,74 @@ class _Payment2State extends State<Payment2> {
       });
     } catch (e) {
       print("Error loading transactions: $e");
+    }
+  }
+
+  Future<void> _resetAndRecalculateEarnings() async {
+    try {
+      if (_currentUser == null) return;
+
+      // ดึงข้อมูลรายได้จากงานที่เสร็จแล้ว (completed)
+      double totalCompletedRevenue = 0;
+      final completedSnapshot = await _firestore
+          .collection('bookings')
+          .where('sitterId', isEqualTo: _currentUser!.uid)
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      for (var doc in completedSnapshot.docs) {
+        final data = doc.data();
+        if (data.containsKey('totalPrice')) {
+          totalCompletedRevenue += (data['totalPrice'] as num).toDouble();
+        }
+      }
+
+      // ดึงข้อมูลการถอนเงิน
+      double totalWithdrawn = 0;
+      final withdrawals = await _firestore
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .collection('transactions')
+          .where('type', isEqualTo: 'withdraw')
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      for (var doc in withdrawals.docs) {
+        final data = doc.data();
+        if (data.containsKey('amount')) {
+          totalWithdrawn += (data['amount'] as num).toDouble();
+        }
+      }
+
+      // คำนวณยอดเงินคงเหลือที่ถูกต้อง (ไม่ติดลบ)
+      double calculatedBalance = totalCompletedRevenue - totalWithdrawn;
+      if (calculatedBalance < 0) calculatedBalance = 0;
+
+      // อัพเดทยอดเงินใน Firestore ใหม่
+      String newWalletValue = calculatedBalance.toStringAsFixed(0);
+      await _firestore
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .update({'wallet': newWalletValue});
+
+      // อัพเดท SharedPreferences
+      await SharedPreferenceHelper().saveUserWallet(newWalletValue);
+
+      // อัพเดทค่าในหน่วยความจำ
+      wallet = newWalletValue;
+      totalEarnings = calculatedBalance;
+
+      // แจ้งผู้ใช้ถ้ามีการเปลี่ยนแปลงยอด
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ยอดเงินของคุณได้รับการอัพเดท'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error recalculating earnings: $e");
     }
   }
 
@@ -541,9 +618,25 @@ class _Payment2State extends State<Payment2> {
     setState(() => isLoading = true);
 
     try {
+      // ดึงข้อมูลยอดเงินปัจจุบัน
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(_currentUser!.uid).get();
+
+      if (!userDoc.exists) {
+        throw Exception('ไม่พบข้อมูลผู้ใช้');
+      }
+
+      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+      double currentBalance = double.tryParse(userData['wallet'] ?? "0") ?? 0;
+
+      // ตรวจสอบว่ามียอดเงินเพียงพอหรือไม่
+      if (currentBalance < amount) {
+        throw Exception('ยอดเงินไม่เพียงพอสำหรับการถอน');
+      }
+
       // คำนวณยอดเงินใหม่หลังจากถอน
-      double newEarnings = totalEarnings - amount;
-      wallet = newEarnings.toStringAsFixed(0);
+      double newBalance = currentBalance - amount;
+      wallet = newBalance.toStringAsFixed(0);
 
       // อัพเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(wallet!);
@@ -567,22 +660,14 @@ class _Payment2State extends State<Payment2> {
         'amount': amount,
         'type': 'withdraw',
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'processing',
-        'description': 'Withdraw to bank account',
-      });
-
-      // บันทึกคำขอถอนเงิน
-      await _firestore.collection('withdrawals').add({
-        'userId': _currentUser!.uid,
-        'amount': amount,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'completed',
+        'description': 'ถอนเงินไปยังบัญชีธนาคาร',
       });
 
       // อัพเดตค่า totalEarnings ในหน้าจอ
       if (mounted) {
         setState(() {
-          totalEarnings = newEarnings;
+          totalEarnings = newBalance;
         });
       }
 
@@ -597,15 +682,15 @@ class _Payment2State extends State<Payment2> {
             backgroundColor: Colors.green,
           ),
         );
-
-        // บอกหน้าก่อนหน้าว่ามีการเปลี่ยนแปลง
-        Navigator.of(context).pop(true);
       }
     } catch (e) {
       print("Error processing withdrawal: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาด: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -703,6 +788,7 @@ class _Payment2State extends State<Payment2> {
     );
   }
 
+  // เพิ่มใน Widget _buildEarningsCard()
   Widget _buildEarningsCard() {
     return Container(
       width: double.infinity,
@@ -736,10 +822,47 @@ class _Payment2State extends State<Payment2> {
                   fontSize: 16,
                 ),
               ),
-              Icon(
-                Icons.payments,
-                color: Colors.white,
-                size: 40,
+              Row(
+                children: [
+                  // เพิ่มปุ่มรีเซ็ต
+                  if (totalEarnings < 0) // แสดงเฉพาะเมื่อยอดติดลบ
+                    IconButton(
+                      icon: Icon(Icons.refresh, color: Colors.white),
+                      onPressed: () {
+                        // แสดงกล่องยืนยันก่อนรีเซ็ต
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('รีเซ็ตการคำนวณ'),
+                            content: Text(
+                                'คุณต้องการรีเซ็ตการคำนวณรายได้ใช่หรือไม่?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: Text('ยกเลิก'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  _resetAndRecalculateEarnings();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                child: Text('รีเซ็ต'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      tooltip: 'รีเซ็ตการคำนวณรายได้',
+                    ),
+                  Icon(
+                    Icons.payments,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                ],
               ),
             ],
           ),
@@ -990,6 +1113,116 @@ class _Payment2State extends State<Payment2> {
         ],
       ),
     );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        ElevatedButton.icon(
+          onPressed: _withdrawMoney,
+          icon: const Icon(Icons.account_balance_wallet),
+          label: const Text('ถอนเงิน'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.teal,
+          ),
+        ),
+        ElevatedButton.icon(
+          onPressed: _refreshWalletData,
+          icon: const Icon(Icons.refresh),
+          label: const Text('รีเฟรชข้อมูล'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+          ),
+        ),
+      ],
+    );
+  }
+
+// เพิ่มฟังก์ชันนี้
+  Future<void> _refreshWalletData() async {
+    try {
+      setState(() => isLoading = true);
+
+      if (_currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('กรุณาเข้าสู่ระบบก่อนดำเนินการ')));
+        return;
+      }
+
+      // ตรวจสอบการเชื่อมต่อกับ Firestore
+      bool hasConnection = await _checkFirestoreConnection();
+      if (!hasConnection) {
+        throw Exception("ไม่สามารถเชื่อมต่อกับ Firestore ได้");
+      }
+
+      // คำนวณรายได้ทั้งหมดจากงานที่เสร็จสิ้น
+      double totalCompletedRevenue = 0;
+      final completedSnapshot = await _firestore
+          .collection('bookings')
+          .where('sitterId', isEqualTo: _currentUser!.uid)
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      for (var doc in completedSnapshot.docs) {
+        final data = doc.data();
+        if (data.containsKey('totalPrice')) {
+          totalCompletedRevenue += (data['totalPrice'] as num).toDouble();
+        }
+      }
+
+      // คำนวณยอดถอนเงินทั้งหมด
+      double totalWithdrawn = 0;
+      final withdrawals = await _firestore
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .collection('transactions')
+          .where('type', isEqualTo: 'withdraw')
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      for (var doc in withdrawals.docs) {
+        final data = doc.data();
+        if (data.containsKey('amount')) {
+          totalWithdrawn += (data['amount'] as num).toDouble();
+        }
+      }
+
+      // คำนวณยอดเงินคงเหลือที่ถูกต้อง
+      double calculatedBalance = totalCompletedRevenue - totalWithdrawn;
+      if (calculatedBalance < 0) calculatedBalance = 0;
+
+      // อัพเดทยอดเงินใน Firestore
+      await _firestore
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .update({'wallet': calculatedBalance.toStringAsFixed(0)});
+
+      // อัพเดท SharedPreferences
+      await SharedPreferenceHelper()
+          .saveUserWallet(calculatedBalance.toStringAsFixed(0));
+
+      // โหลดข้อมูลใหม่
+      await _loadUserData();
+      await _loadTransactions();
+      await _loadPendingPayments();
+      await _loadCompletedJobs();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'อัพเดทข้อมูลรายได้เรียบร้อยแล้ว: ฿${calculatedBalance.toStringAsFixed(0)}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print("Error refreshing wallet data: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการรีเฟรชข้อมูล: $e')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   Widget _buildTransactionHistorySection() {
