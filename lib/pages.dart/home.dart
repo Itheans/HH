@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:myproject/Catpage.dart/cat_history.dart';
 import 'package:myproject/page2.dart/location/location.dart';
 import 'package:myproject/pages.dart/BookingStatusScreen.dart';
@@ -17,13 +20,209 @@ class Home extends StatefulWidget {
 
 class _MyWidgetState extends State<Home> {
   bool cat = false, paw = false, backpack = false, ball = false;
+  bool isLoading = true;
+  List<Map<String, dynamic>> activeBookings = [];
+  String? userName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserInfo();
+    _loadActiveBookings();
+  }
+
+  // โหลดข้อมูลผู้ใช้
+  Future<void> _loadUserInfo() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        if (userDoc.exists) {
+          setState(() {
+            userName = userDoc.data()?['name'] ?? 'ผู้ใช้งาน';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user info: $e');
+    }
+  }
+
+  // โหลดข้อมูลการจองที่กำลังดำเนินการอยู่
+  Future<void> _loadActiveBookings() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() {
+          isLoading = false;
+        });
+        return;
+      }
+
+      // ดึงข้อมูลการจองจากทั้งสอง collection
+      final bookingsSnapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', whereIn: ['confirmed', 'in_progress']).get();
+
+      final requestsSnapshot = await FirebaseFirestore.instance
+          .collection('booking_requests')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', whereIn: ['confirmed', 'in_progress']).get();
+
+      List<Map<String, dynamic>> tempBookings = [];
+
+      // ประมวลผลข้อมูลจาก bookings
+      for (var doc in bookingsSnapshot.docs) {
+        await _processBookingData(doc, tempBookings);
+      }
+
+      // ประมวลผลข้อมูลจาก booking_requests
+      for (var doc in requestsSnapshot.docs) {
+        await _processBookingData(doc, tempBookings);
+      }
+
+      // เรียงลำดับตามวันที่ล่าสุด
+      tempBookings.sort((a, b) {
+        final DateTime dateA = a['endDate'] ?? DateTime.now();
+        final DateTime dateB = b['endDate'] ?? DateTime.now();
+        return dateB.compareTo(dateA);
+      });
+
+      setState(() {
+        activeBookings = tempBookings;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading active bookings: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  // ประมวลผลข้อมูลการจอง
+  Future<void> _processBookingData(QueryDocumentSnapshot doc,
+      List<Map<String, dynamic>> tempBookings) async {
+    try {
+      final bookingData = doc.data() as Map<String, dynamic>;
+      final sitterId = bookingData['sitterId'];
+
+      if (sitterId != null) {
+        // ดึงข้อมูลผู้รับเลี้ยง
+        final sitterDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(sitterId)
+            .get();
+
+        // ดึงข้อมูลแมวที่ฝากเลี้ยง
+        List<Map<String, dynamic>> cats = [];
+        if (bookingData['catIds'] != null) {
+          final catIds = List<String>.from(bookingData['catIds']);
+          if (catIds.isNotEmpty) {
+            final user = FirebaseAuth.instance.currentUser;
+            for (String catId in catIds) {
+              try {
+                final catDoc = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user?.uid)
+                    .collection('cats')
+                    .doc(catId)
+                    .get();
+
+                if (catDoc.exists) {
+                  cats.add({
+                    'id': catDoc.id,
+                    'name': catDoc.data()?['name'] ?? 'ไม่ระบุชื่อ',
+                    'imagePath': catDoc.data()?['imagePath'] ?? '',
+                  });
+                }
+              } catch (e) {
+                print('Error loading cat data: $e');
+              }
+            }
+          }
+        }
+
+        // หาวันที่เริ่มต้นและสิ้นสุด
+        DateTime? startDate;
+        DateTime? endDate;
+
+        if (bookingData['dates'] != null) {
+          List<Timestamp> timestamps =
+              List<Timestamp>.from(bookingData['dates']);
+          if (timestamps.isNotEmpty) {
+            timestamps.sort((a, b) => a.compareTo(b));
+            startDate = timestamps.first.toDate();
+            endDate = timestamps.last.toDate();
+          }
+        }
+
+        tempBookings.add({
+          'id': doc.id,
+          'sitterName': sitterDoc.data()?['name'] ?? 'ไม่ระบุชื่อ',
+          'sitterPhoto': sitterDoc.data()?['photo'] ?? '',
+          'status': bookingData['status'] ?? 'pending',
+          'startDate': startDate,
+          'endDate': endDate,
+          'price': bookingData['totalPrice'],
+          'cats': cats,
+        });
+      }
+    } catch (e) {
+      print('Error processing booking: $e');
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'confirmed':
+        return 'ยืนยันแล้ว';
+      case 'in_progress':
+        return 'กำลังดูแล';
+      case 'completed':
+        return 'เสร็จสิ้น';
+      case 'cancelled':
+        return 'ยกเลิก';
+      default:
+        return 'รอการยืนยัน';
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'confirmed':
+        return Colors.green;
+      case 'in_progress':
+        return Colors.blue;
+      case 'completed':
+        return Colors.purple;
+      case 'cancelled':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Colors.grey[50],
-        body: SafeArea(
+      backgroundColor: Colors.grey[50],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _loadActiveBookings();
+        },
+        child: SafeArea(
           child: SingleChildScrollView(
+            physics: AlwaysScrollableScrollPhysics(),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -39,21 +238,21 @@ class _MyWidgetState extends State<Home> {
                   children: [
                     const SizedBox(height: 20),
                     _buildHeader(),
-                    const SizedBox(height: 30),
-                    Text('แมว', style: AppWidget.HeadlineTextFeildStyle()),
-                    Text('บริการฝากเลี้ยงแมว',
-                        style: AppWidget.LightTextFeildStyle()),
+                    const SizedBox(height: 20),
+                    _buildWelcomeSection(),
                     const SizedBox(height: 20),
                     _buildQuickActions(),
                     const SizedBox(height: 30),
-                    _buildCustomerCards(),
+                    _buildActiveBookingsSection(),
                     const SizedBox(height: 20),
                   ],
                 ),
               ),
             ),
           ),
-        ));
+        ),
+      ),
+    );
   }
 
   Widget _buildHeader() {
@@ -89,59 +288,195 @@ class _MyWidgetState extends State<Home> {
     );
   }
 
+  Widget _buildWelcomeSection() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.shade400, Colors.orange.shade700],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.3),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.white.withOpacity(0.2),
+                radius: 24,
+                child: Icon(
+                  Icons.person,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'สวัสดี, ${userName ?? 'ผู้ใช้งาน'}',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'ยินดีต้อนรับกลับมา',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PrepareCatsForSittingPage(),
+                      ),
+                    );
+                  },
+                  icon: Icon(Icons.pets, color: Colors.orange),
+                  label: Text('ฝากเลี้ยงแมว'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.orange.shade700,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickActions() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildActionItem('images/cat.png', cat, () {
-          setState(() {
-            cat = true;
-            paw = backpack = ball = false;
-          });
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CatHistoryPage()),
-          );
-        }, 'แมวของคุณ'),
-        _buildActionItem('images/paw.png', paw, () {
-          setState(() {
-            paw = true;
-            cat = backpack = ball = false;
-          });
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ReviewsPage(
-                itemId: 'booking_id',
-                sitterId: '/ sitters_id',
+        Text(
+          'บริการของเรา',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildActionItem('images/cat.png', cat, () {
+              setState(() {
+                cat = true;
+                paw = backpack = ball = false;
+              });
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CatHistoryPage()),
+              );
+            }, 'แมวของคุณ'),
+            _buildActionItem('images/paw.png', paw, () {
+              setState(() {
+                paw = true;
+                cat = backpack = ball = false;
+              });
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ReviewsPage(
+                    itemId: 'booking_id',
+                    sitterId: '/ sitters_id',
+                  ),
+                ),
+              );
+            }, 'รีวิว'),
+            _buildActionItem('images/backpack.png', backpack, () {
+              setState(() {
+                backpack = true;
+                cat = paw = ball = false;
+              });
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PrepareCatsForSittingPage(),
+                ),
+              );
+            }, 'จองบริการ'),
+            _buildActionItem('images/ball.png', ball, () {
+              setState(() {
+                ball = true;
+                cat = paw = backpack = false;
+              });
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => LocationMapPage(),
+                ),
+              );
+            }, 'ตำแหน่ง'),
+          ],
+        ),
+        SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BookingStatusScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.list_alt, color: Colors.white),
+            label: const Text(
+              'ดูสถานะการฝากเลี้ยงทั้งหมด',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-          );
-        }, 'รีวิว'),
-        _buildActionItem('images/backpack.png', backpack, () {
-          setState(() {
-            backpack = true;
-            cat = paw = ball = false;
-          });
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PrepareCatsForSittingPage(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 2,
             ),
-          );
-        }, 'จองบริการ'),
-        _buildActionItem('images/ball.png', ball, () {
-          setState(() {
-            ball = true;
-            cat = paw = backpack = false;
-          });
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LocationMapPage(),
-            ),
-          );
-        }, 'ตำแหน่ง'),
+          ),
+        ),
       ],
     );
   }
@@ -190,126 +525,284 @@ class _MyWidgetState extends State<Home> {
     );
   }
 
-  Widget _buildCustomerCards() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // เพิ่มปุ่มดูสถานะการฝากเลี้ยง
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BookingStatusScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.list_alt, color: Colors.white),
-              label: const Text(
-                'สถานะการฝากเลี้ยง',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                elevation: 3,
+  Widget _buildActiveBookingsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'การฝากเลี้ยงที่กำลังดำเนินการ',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
               ),
             ),
+            if (activeBookings.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BookingStatusScreen(),
+                    ),
+                  );
+                },
+                child: Text(
+                  'ดูทั้งหมด',
+                  style: TextStyle(
+                    color: Colors.orange.shade700,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: 10),
+        isLoading
+            ? Center(child: CircularProgressIndicator(color: Colors.orange))
+            : activeBookings.isEmpty
+                ? _buildEmptyBookings()
+                : Column(
+                    children: activeBookings
+                        .map((booking) => _buildBookingCard(booking))
+                        .toList(),
+                  ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyBookings() {
+    return Container(
+      height: 150,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            spreadRadius: 0,
+            offset: Offset(0, 5),
           ),
-          // ... ส่วนที่เหลือคงเดิม
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.pets,
+            size: 40,
+            color: Colors.grey[400],
+          ),
+          SizedBox(height: 16),
+          Text(
+            'ไม่มีการฝากเลี้ยงที่กำลังดำเนินการ',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'คุณสามารถฝากเลี้ยงแมวได้โดยกดปุ่ม "จองบริการ"',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+            ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCustomerCard(String name, int cats) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-            context, MaterialPageRoute(builder: (context) => const Details()));
-      },
+  Widget _buildBookingCard(Map<String, dynamic> booking) {
+    final status = booking['status'] ?? 'pending';
+    final sitterName = booking['sitterName'] ?? 'ไม่ระบุชื่อ';
+    final sitterPhoto = booking['sitterPhoto'] ?? '';
+    final startDate = booking['startDate'];
+    final endDate = booking['endDate'];
+    final price = booking['price'];
+    final cats = booking['cats'] ?? [];
+
+    String dateRange = 'ไม่ระบุวันที่';
+    if (startDate != null && endDate != null) {
+      final formatter = DateFormat('dd/MM/yyyy');
+      dateRange =
+          '${formatter.format(startDate)} - ${formatter.format(endDate)}';
+    }
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      elevation: 2,
       child: Container(
-        width: 200,
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.orange.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            )
-          ],
-          border: Border.all(
-            color: Colors.orange.shade100,
-            width: 1,
-          ),
-        ),
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 120,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Image.asset(
-                'images/cat.png',
-                height: 100,
-                width: 100,
-                fit: BoxFit.contain,
-                color: Colors.orange.shade700,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Pet of your customer house',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.orange.shade700,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              name,
-              style: AppWidget.LightTextFeildStyle(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
-                Icon(
-                  Icons.pets,
-                  size: 16,
-                  color: Colors.orange.shade400,
+                // รูปโปรไฟล์ผู้รับเลี้ยง
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.grey.shade200,
+                  backgroundImage:
+                      sitterPhoto.isNotEmpty ? NetworkImage(sitterPhoto) : null,
+                  child: sitterPhoto.isEmpty
+                      ? Icon(Icons.person, color: Colors.grey)
+                      : null,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  'Total cat $cats',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
+                SizedBox(width: 12),
+
+                // ข้อมูลผู้รับเลี้ยง
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ผู้รับเลี้ยง: $sitterName',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(status).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _getStatusText(status),
+                              style: TextStyle(
+                                color: _getStatusColor(status),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          if (price != null)
+                            Text(
+                              '฿${price.toString()}',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
+            ),
+
+            // วันที่ฝากเลี้ยง
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.date_range,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    dateRange,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // รายการแมวที่ฝากเลี้ยง
+            if (cats.isNotEmpty) ...[
+              Text(
+                'แมวที่ฝากเลี้ยง:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              SizedBox(height: 8),
+              SizedBox(
+                height: 60,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: cats.length,
+                  itemBuilder: (context, index) {
+                    final cat = cats[index];
+                    return Container(
+                      margin: EdgeInsets.only(right: 10),
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.grey.shade200,
+                            backgroundImage: cat['imagePath'].isNotEmpty
+                                ? NetworkImage(cat['imagePath'])
+                                : null,
+                            child: cat['imagePath'].isEmpty
+                                ? Icon(Icons.pets, color: Colors.grey)
+                                : null,
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            cat['name'] ?? 'แมว',
+                            style: TextStyle(
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            // ปุ่มดูรายละเอียดเพิ่มเติม
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      // ไปยังหน้ารายละเอียดการจอง
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BookingStatusScreen(),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'ดูรายละเอียด',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
