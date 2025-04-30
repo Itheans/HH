@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:myproject/Admin/AdminPage.dart';
+import 'package:myproject/Admin/ApprovalPage.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({Key? key}) : super(key: key);
@@ -16,7 +17,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   bool _isLoading = false;
   String _errorMessage = '';
 
-  void _adminLogin() {
+  Future<void> _adminLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -24,44 +25,44 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
       });
 
       // ตรวจสอบข้อมูลการเข้าสู่ระบบ
-      if (_emailController.text.trim() == "admin@gmail.com" &&
-          _passwordController.text.trim() == "123456789") {
-        // ตรวจสอบจำนวนการจองที่รอการยืนยัน
-        FirebaseFirestore.instance
-            .collection('bookings')
-            .where('status', isEqualTo: 'pending')
-            .get()
-            .then((snapshot) {
-          int pendingCount = snapshot.docs.length;
+      try {
+        final pendingSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', isEqualTo: 'sitter')
+            .where('approved', isEqualTo: false)
+            .get();
 
-          // เข้าสู่ระบบสำเร็จ
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const AdminPanel()),
-          );
+        int pendingCount = pendingSnapshot.docs.length;
 
-          // แสดงการแจ้งเตือนหากมีการจองที่รอการยืนยัน
-          if (pendingCount > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('มี $pendingCount รายการจองที่รอการยืนยัน'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 5),
+        // นำทางไปยังหน้า Admin Page
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AdminPage(pendingApprovals: pendingCount),
+          ),
+        );
+
+        // ถ้ามีคำขออนุมัติที่รอดำเนินการ ให้แสดงข้อความแจ้งเตือน
+        if (pendingCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('มี $pendingCount คำขออนุมัติที่รอดำเนินการ'),
+              action: SnackBarAction(
+                label: 'ดูเลย',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => ApprovalPage()),
+                  );
+                },
               ),
-            );
-          }
-        }).catchError((error) {
-          setState(() {
-            _isLoading = false;
-            _errorMessage = 'เกิดข้อผิดพลาด: $error';
-          });
-        });
-      } else {
-        // เข้าสู่ระบบไม่สำเร็จ
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
-        });
+            ),
+          );
+        }
+      } catch (e) {
+        // จัดการข้อผิดพลาด
+        print('Error checking pending approvals: $e');
       }
     }
   }

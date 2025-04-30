@@ -50,6 +50,10 @@ class _SignUpState extends State<SignUp> {
           'role': role,
           'wallet': "0",
           'SearchKey': nameController.text.substring(0, 1).toUpperCase(),
+          'approved': role == 'sitter'
+              ? false
+              : true, // ผู้ใช้ทั่วไปได้รับอนุมัติทันที แต่ผู้รับเลี้ยงแมวต้องรอการอนุมัติ
+          'registrationDate': FieldValue.serverTimestamp(),
         };
 
         await FirebaseFirestore.instance
@@ -89,10 +93,16 @@ class _SignUpState extends State<SignUp> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
+            content: Text(role == 'sitter'
+                ? 'สมัครสมาชิกสำเร็จ รอการอนุมัติจากผู้ดูแลระบบ'
+                : 'สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ'),
+            backgroundColor: role == 'sitter' ? Colors.orange : Colors.green,
           ),
         );
+
+// นำไปยังหน้า Login
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (context) => LogIn()));
       } finally {
         setState(() {
           _isLoading = false;

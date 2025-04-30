@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
+import 'package:myproject/Admin/ApprovalPage.dart';
 import 'package:myproject/Admin/BookingDetailPage.dart';
 import 'package:myproject/Admin/SitterIncomeReport.dart';
 
-class AdminPanel extends StatefulWidget {
-  const AdminPanel({Key? key}) : super(key: key);
+class AdminPage extends StatefulWidget {
+  final int pendingApprovals;
+
+  const AdminPage({Key? key, this.pendingApprovals = 0}) : super(key: key);
 
   @override
-  _AdminPanelState createState() => _AdminPanelState();
+  State<AdminPage> createState() => _AdminPageState();
 }
 
 class _AdminPanelState extends State<AdminPanel>
@@ -144,17 +147,39 @@ class _AdminPanelState extends State<AdminPanel>
           ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildUserList('user'),
-                _buildUserList('sitter'),
-                _buildCatsList(),
-                _buildBookingsList(), // เพิ่มหน้าแสดงการจอง
-              ],
+      body: Column(
+        children: [
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildUserList('user'),
+                      _buildUserList('sitter'),
+                      _buildCatsList(),
+                      _buildBookingsList(), // เพิ่มหน้าแสดงการจอง
+                    ],
+                  ),
+          ),
+          ListTile(
+            leading: Icon(Icons.approval, color: Colors.green),
+            title: Text(
+              'อนุมัติผู้รับเลี้ยงแมว',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
             ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ApprovalPage()),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 

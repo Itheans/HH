@@ -58,6 +58,7 @@ class _LoginState extends State<LogIn> {
         pic = userData['photo'] ?? '';
         id = userData['uid'] ?? '';
         role = userData['role'] ?? '';
+        bool isApproved = userData['approved'] ?? false;
 
         // เก็บข้อมูลผู้ใช้ใน SharedPreferences
         await SharedPreferenceHelper().saveUserDisplayName(name);
@@ -67,9 +68,17 @@ class _LoginState extends State<LogIn> {
         await SharedPreferenceHelper().saveUserRole(role);
 
         // นำทางไปยังหน้าต่างๆ ตามบทบาท
-        if (role == 'sitter') {
-          Navigator.pushReplacement(
-              context, MaterialPageRoute(builder: (context) => Nevbarr()));
+        if (role == 'sitter' && !isApproved) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('บัญชีของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          setState(() {
+            _isLoading = false;
+          });
+          return;
         } else {
           Navigator.pushReplacement(
               context, MaterialPageRoute(builder: (context) => BottomNav()));
