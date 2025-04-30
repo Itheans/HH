@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
-class ApprovalPage extends StatefulWidget {
-  const ApprovalPage({Key? key}) : super(key: key);
+class SitterApprovalPage extends StatefulWidget {
+  const SitterApprovalPage({Key? key}) : super(key: key);
 
   @override
-  State<ApprovalPage> createState() => _ApprovalPageState();
+  State<SitterApprovalPage> createState() => _SitterApprovalPageState();
 }
 
-class _ApprovalPageState extends State<ApprovalPage> {
+class _SitterApprovalPageState extends State<SitterApprovalPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _pendingSitters = [];
 
@@ -25,29 +24,22 @@ class _ApprovalPageState extends State<ApprovalPage> {
     });
 
     try {
-      // ดึงรายการผู้รับเลี้ยงแมวที่รอการอนุมัติ
-      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+      final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'sitter')
-          .where('approved', isEqualTo: false)
-          .orderBy('registrationDate', descending: true)
+          .where('status', isEqualTo: 'pending')
           .get();
 
-      final sitters = snapshot.docs.map((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return {
+      List<Map<String, dynamic>> pendingSitters = [];
+      for (var doc in snapshot.docs) {
+        pendingSitters.add({
           'id': doc.id,
-          'name': data['name'] ?? 'ไม่ระบุชื่อ',
-          'email': data['email'] ?? 'ไม่ระบุอีเมล',
-          'photo': data['photo'] ?? '',
-          'registrationDate': data['registrationDate'] != null
-              ? (data['registrationDate'] as Timestamp).toDate()
-              : DateTime.now(),
-        };
-      }).toList();
+          ...doc.data(),
+        });
+      }
 
       setState(() {
-        _pendingSitters = sitters;
+        _pendingSitters = pendingSitters;
         _isLoading = false;
       });
     } catch (e) {
@@ -66,64 +58,99 @@ class _ApprovalPageState extends State<ApprovalPage> {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(sitterId)
-          .update({'approved': true});
+          .update({
+        'status': 'approved',
+        'approvedAt': FieldValue.serverTimestamp(),
+      });
+
+      // อัพเดตรายการในหน้าจอ
+      setState(() {
+        _pendingSitters.removeWhere((sitter) => sitter['id'] == sitterId);
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('อนุมัติผู้รับเลี้ยงแมวเรียบร้อยแล้ว')),
       );
-
-      // รีโหลดรายการ
-      _loadPendingSitters();
     } catch (e) {
+      print('Error approving sitter: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการอนุมัติ: $e')),
       );
     }
   }
 
   Future<void> _rejectSitter(String sitterId) async {
-    // แสดงไดอะล็อกยืนยันการปฏิเสธ
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('ยืนยันการปฏิเสธ'),
-        content:
-            Text('คุณต้องการปฏิเสธการสมัครของผู้รับเลี้ยงแมวรายนี้ใช่หรือไม่?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('ยกเลิก'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('ปฏิเสธ'),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-          ),
-        ],
-      ),
-    );
+    try {
+      // แสดงไดอะล็อกให้ระบุเหตุผลในการปฏิเสธ
+      String? rejectionReason = await showDialog<String>(
+        context: context,
+        builder: (context) => _buildRejectionDialog(context),
+      );
 
-    if (confirm == true) {
-      try {
-        // ให้คำนึงถึงว่าคุณอาจต้องการลบข้อมูลหรือเพียงทำเครื่องหมายว่าถูกปฏิเสธ
-        // ในที่นี้เราจะเพียงแค่ลบข้อมูลผู้ใช้
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(sitterId)
-            .delete();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ปฏิเสธผู้รับเลี้ยงแมวเรียบร้อยแล้ว')),
-        );
-
-        // รีโหลดรายการ
-        _loadPendingSitters();
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
-        );
+      if (rejectionReason == null) {
+        return; // ผู้ใช้ยกเลิกการปฏิเสธ
       }
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(sitterId)
+          .update({
+        'status': 'rejected',
+        'rejectionReason': rejectionReason,
+        'rejectedAt': FieldValue.serverTimestamp(),
+      });
+
+      // อัพเดตรายการในหน้าจอ
+      setState(() {
+        _pendingSitters.removeWhere((sitter) => sitter['id'] == sitterId);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ปฏิเสธผู้รับเลี้ยงแมวเรียบร้อยแล้ว')),
+      );
+    } catch (e) {
+      print('Error rejecting sitter: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาดในการปฏิเสธ: $e')),
+      );
     }
+  }
+
+  Widget _buildRejectionDialog(BuildContext context) {
+    TextEditingController reasonController = TextEditingController();
+
+    return AlertDialog(
+      title: Text('ระบุเหตุผลในการปฏิเสธ'),
+      content: TextField(
+        controller: reasonController,
+        decoration: InputDecoration(
+          hintText: 'เหตุผลในการปฏิเสธ',
+          border: OutlineInputBorder(),
+        ),
+        maxLines: 3,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('ยกเลิก'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (reasonController.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('กรุณาระบุเหตุผลในการปฏิเสธ')),
+              );
+              return;
+            }
+            Navigator.pop(context, reasonController.text.trim());
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+          ),
+          child: Text('ยืนยัน'),
+        ),
+      ],
+    );
   }
 
   @override
@@ -168,6 +195,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
                   itemBuilder: (context, index) {
                     final sitter = _pendingSitters[index];
                     return Card(
+                      elevation: 3,
                       margin: EdgeInsets.only(bottom: 16),
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -177,10 +205,11 @@ class _ApprovalPageState extends State<ApprovalPage> {
                             Row(
                               children: [
                                 CircleAvatar(
-                                  backgroundImage: sitter['photo'].isNotEmpty
+                                  backgroundImage: sitter['photo'] != null &&
+                                          sitter['photo'] != 'images/User.png'
                                       ? NetworkImage(sitter['photo'])
                                       : null,
-                                  child: sitter['photo'].isEmpty
+                                  child: sitter['photo'] == 'images/User.png'
                                       ? Icon(Icons.person)
                                       : null,
                                   radius: 30,
@@ -192,7 +221,7 @@ class _ApprovalPageState extends State<ApprovalPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        sitter['name'],
+                                        sitter['name'] ?? 'ไม่ระบุชื่อ',
                                         style: TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
@@ -200,41 +229,45 @@ class _ApprovalPageState extends State<ApprovalPage> {
                                       ),
                                       SizedBox(height: 4),
                                       Text(
-                                        sitter['email'],
+                                        sitter['email'] ?? 'ไม่ระบุอีเมล',
                                         style: TextStyle(
                                           color: Colors.grey[600],
                                         ),
                                       ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'สมัครเมื่อ: ${DateFormat('dd/MM/yyyy HH:mm').format(sitter['registrationDate'])}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[500],
+                                      if (sitter['phone'] != null)
+                                        Text(
+                                          'โทร: ${sitter['phone']}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                          ),
                                         ),
-                                      ),
                                     ],
                                   ),
                                 ),
                               ],
                             ),
                             SizedBox(height: 16),
+                            Divider(),
+                            SizedBox(height: 8),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                OutlinedButton(
+                                OutlinedButton.icon(
                                   onPressed: () => _rejectSitter(sitter['id']),
-                                  child: Text('ปฏิเสธ'),
+                                  icon: Icon(Icons.cancel, color: Colors.red),
+                                  label: Text('ปฏิเสธ'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.red,
                                   ),
                                 ),
-                                SizedBox(width: 8),
-                                ElevatedButton(
+                                SizedBox(width: 12),
+                                ElevatedButton.icon(
                                   onPressed: () => _approveSitter(sitter['id']),
-                                  child: Text('อนุมัติ'),
+                                  icon: Icon(Icons.check_circle),
+                                  label: Text('อนุมัติ'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
                                   ),
                                 ),
                               ],

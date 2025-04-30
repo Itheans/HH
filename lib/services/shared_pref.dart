@@ -9,6 +9,7 @@ class SharedPreferenceHelper {
   static String displaynameKey = 'USERDISPLAYNAME';
   static String roleKey = 'USERROLEKEY'; // Added missing role key
   static String userWalletKey = 'USERWALLETKEY';
+  static String userStatusKey = 'USERSTATUSKEY'; // เพิ่มคีย์สำหรับสถานะ
 
   // Save user data to SharedPreferences
   Future<bool> saveUserId(String getUserId) async {
@@ -113,5 +114,17 @@ class SharedPreferenceHelper {
         .update({
       'wallet': amount,
     });
+  }
+
+// เพิ่มฟังก์ชันบันทึกสถานะ
+  Future<bool> saveUserStatus(String status) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.setString(userStatusKey, status);
+  }
+
+// เพิ่มฟังก์ชันดึงสถานะ
+  Future<String?> getUserStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getString(userStatusKey);
   }
 }
