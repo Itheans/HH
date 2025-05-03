@@ -18,10 +18,42 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _activeBookings = [];
 
+  // เพิ่มแคชข้อมูลผู้ใช้เพื่อป้องกันการดึงข้อมูลซ้ำ
+  Map<String, Map<String, dynamic>> _userCache = {};
+
   @override
   void initState() {
     super.initState();
     _loadActiveBookings();
+  }
+
+  // เพิ่มฟังก์ชันสำหรับดึงข้อมูลผู้ใช้
+  Future<Map<String, dynamic>?> _getUserData(String userId) async {
+    // ตรวจสอบในแคชก่อน
+    if (_userCache.containsKey(userId)) {
+      return _userCache[userId];
+    }
+
+    try {
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(userId).get();
+      if (userDoc.exists) {
+        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+        // เก็บในแคช
+        _userCache[userId] = userData;
+
+        // สำหรับดีบัก
+        print("โหลดข้อมูลผู้ใช้: $userId");
+        print("ข้อมูลผู้ใช้: $userData");
+
+        return userData;
+      }
+    } catch (e) {
+      print("เกิดข้อผิดพลาดในการโหลดข้อมูลผู้ใช้: $e");
+    }
+
+    return null;
   }
 
   Future<void> _loadActiveBookings() async {
@@ -49,14 +81,27 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
         booking['id'] = doc.id;
 
         // ดึงข้อมูลเจ้าของแมว
-        DocumentSnapshot userDoc =
-            await _firestore.collection('users').doc(booking['userId']).get();
+        String userId = booking['userId'] as String;
 
-        if (userDoc.exists) {
-          Map<String, dynamic> userData =
-              userDoc.data() as Map<String, dynamic>;
-          booking['userName'] = userData['name'] ?? 'ไม่ระบุชื่อ';
-          booking['userPhoto'] = userData['photo'] ?? '';
+        // ดึงข้อมูลผู้ใช้ล่วงหน้าเพื่อเก็บในแคช
+        Map<String, dynamic>? userData = await _getUserData(userId);
+
+        if (userData != null) {
+          // ทดลองเชื่อมต่อกับหลายคีย์ที่อาจเป็นไปได้
+          booking['userName'] = userData['name'] ??
+              userData['displayName'] ??
+              userData['username'] ??
+              'ไม่ระบุชื่อ';
+          booking['userPhoto'] = userData['photo'] ??
+              userData['photoURL'] ??
+              userData['profilePic'] ??
+              '';
+
+          // ลองแกะข้อมูลดูว่ามีอะไรบ้าง
+          print("ชื่อผู้ใช้: ${booking['userName']}");
+        } else {
+          booking['userName'] = 'ไม่สามารถโหลดชื่อ';
+          booking['userPhoto'] = '';
         }
 
         bookings.add(booking);
@@ -78,7 +123,6 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
     }
   }
 
-  // ใน _completeBooking method ที่ประมาณบรรทัด 80
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -112,14 +156,8 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
         currentWallet = double.tryParse(walletStr) ?? 0;
       }
 
-      // คำนวณยอดเงินใหม่หลังจากเพิ่มรายได้
       double newWallet = currentWallet + bookingAmount;
       String walletStr = newWallet.toStringAsFixed(0);
-
-      // เพิ่ม logging เพื่อตรวจสอบค่า
-      print("DEBUG: Current wallet: $currentWallet");
-      print("DEBUG: Booking amount: $bookingAmount");
-      print("DEBUG: New wallet: $newWallet");
 
       // ใช้ writeBatch แทน transaction เพื่อความแน่นอน
       WriteBatch batch = _firestore.batch();
@@ -128,7 +166,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
       batch.update(_firestore.collection('bookings').doc(bookingId), {
         'status': 'completed',
         'completedAt': FieldValue.serverTimestamp(),
-        'paymentStatus': 'completed',
+        'paymentStatus': 'completed', // เพิ่มสถานะการชำระเงิน
       });
 
       // อัพเดตยอดเงินใน wallet
@@ -265,7 +303,7 @@ class _ActiveBookingsPageState extends State<ActiveBookingsPage> {
                                   : null,
                             ),
                             title: Text(
-                              booking['userName'] ?? 'ไม่ระบุชื่อ',
+                              booking['userName'] ?? 'ชื่อผู้ใช้งาน',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,

@@ -1,10 +1,11 @@
+// แก้ไขส่วนนำเข้าด้านบนของไฟล์ (ประมาณบรรทัด 1-10)
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myproject/page2.dart/BookingAcceptancePage.dart';
-import 'package:myproject/page2.dart/scheduleincomepage.dart';
+import 'package:myproject/page2.dart/ActiveBookingsPage.dart'; // นำเข้า ActiveBookingsPage จากไฟล์นี้เท่านั้น
+import 'package:myproject/page2.dart/scheduleincomepage.dart'; // นำเข้า ScheduleIncomePage อย่างถูกต้อง
 import 'package:myproject/widget/widget_support.dart';
-import 'package:myproject/page2.dart/ActiveBookingsPage.dart';
 
 class SitterBookingManagement extends StatefulWidget {
   const SitterBookingManagement({Key? key}) : super(key: key);
@@ -250,7 +251,7 @@ class _SitterBookingManagementState extends State<SitterBookingManagement> {
           () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ScheduleIncomePage(),
+              builder: (context) => const ScheduleIncomePage(),
             ),
           ),
         ),

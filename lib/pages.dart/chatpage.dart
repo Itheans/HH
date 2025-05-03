@@ -336,10 +336,60 @@ class _ChatpageState extends State<ChatPage> {
         }
       }
 
-      // เพิ่มโค้ดคล้ายกันสำหรับกรณีเช็คเอาท์
+      // กรณีเช็คเอาท์
       if (result['checkedOut'] == true) {
-        // โค้ดสำหรับเช็คเอาท์ให้ทำคล้ายกัน แต่เปลี่ยนข้อความ
-        // ...
+        String checkOutTime =
+            result['checkOutTime'] ?? DateTime.now().toString();
+        String additionalNote = result['note'] ?? '';
+
+        // ตรวจสอบและส่งรูปภาพ
+        if (result['imagePath'] != null && result['capturedImage'] != null) {
+          // อัปโหลดรูปภาพไปยัง Firebase Storage
+          String? imageUrl = await _uploadImage(result['capturedImage']);
+
+          if (imageUrl != null) {
+            // สร้างข้อความพร้อมกับรูปภาพ (ส่งเพียงครั้งเดียว)
+            String message = "🚪 ฉันได้ทำการเช็คเอาท์แล้วเมื่อ $checkOutTime";
+            if (additionalNote.isNotEmpty) {
+              message += "\n📝 หมายเหตุ: $additionalNote";
+            }
+
+            Map<String, dynamic> messageInfoMap = {
+              "message": message,
+              "sendBy": myUserName,
+              "ts": DateFormat('h:mm a').format(DateTime.now()),
+              "time": FieldValue.serverTimestamp(),
+              "imgUrl": myProfilePic,
+              "imageUrl": imageUrl, // เพิ่ม URL รูปภาพลงในข้อความ
+            };
+
+            String newMessageId = randomAlphaNumeric(10);
+            await DatabaseMethods()
+                .addMessage(chatRoomId!, newMessageId, messageInfoMap);
+
+            Map<String, dynamic> lastMessageInfoMap = {
+              "lastMessage": "📷 รูปภาพ",
+              "lastMessageSendTs": DateFormat('h:mm a').format(DateTime.now()),
+              "time": FieldValue.serverTimestamp(),
+              "lastMessageSendBy": myUserName,
+            };
+
+            await DatabaseMethods()
+                .updateLastMessageSend(chatRoomId!, lastMessageInfoMap);
+          }
+        } else {
+          // ถ้าไม่มีรูปภาพ ส่งเฉพาะข้อความ
+          String message = "🚪 ฉันได้ทำการเช็คเอาท์แล้วเมื่อ $checkOutTime";
+          if (additionalNote.isNotEmpty) {
+            message += "\n📝 หมายเหตุ: $additionalNote";
+          }
+
+          // บันทึกข้อความลงในกล่องข้อความ
+          messageController.text = message;
+
+          // ส่งข้อความ
+          addMessage(true);
+        }
       }
     }
   }
