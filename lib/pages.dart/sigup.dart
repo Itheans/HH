@@ -41,6 +41,7 @@ class _SignUpState extends State<SignUp> {
         String uid = userCredential.user!.uid; // ID ของผู้ใช้
 
         // สร้างข้อมูลผู้ใช้
+        // สร้างข้อมูลผู้ใช้
         Map<String, dynamic> userInfoMap = {
           'name': nameController.text.trim(),
           'email': emailController.text.trim(),
@@ -50,6 +51,9 @@ class _SignUpState extends State<SignUp> {
           'role': role,
           'wallet': "0",
           'SearchKey': nameController.text.substring(0, 1).toUpperCase(),
+          'status': role == 'sitter'
+              ? 'pending'
+              : 'approved', // เพิ่มสถานะ pending สำหรับ sitter
         };
 
         await FirebaseFirestore.instance
@@ -87,12 +91,26 @@ class _SignUpState extends State<SignUp> {
           }
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-          ),
-        );
+        // แสดงข้อความสำเร็จ
+        if (role == 'sitter') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('สมัครสมาชิกสำเร็จ รอการอนุมัติจากผู้ดูแลระบบ'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+// นำไปยังหน้า Login
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (context) => LogIn()));
       } finally {
         setState(() {
           _isLoading = false;

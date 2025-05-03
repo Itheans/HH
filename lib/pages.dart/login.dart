@@ -58,6 +58,19 @@ class _LoginState extends State<LogIn> {
         pic = userData['photo'] ?? '';
         id = userData['uid'] ?? '';
         role = userData['role'] ?? '';
+        String status = userData['status'] ?? 'approved'; // ดึงข้อมูลสถานะ
+
+        // ตรวจสอบว่าบัญชีได้รับการอนุมัติหรือไม่
+        if (role == 'sitter' && status == 'pending') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('บัญชีของคุณยังอยู่ระหว่างรอการอนุมัติ'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          await FirebaseAuth.instance.signOut(); // ทำการออกจากระบบ
+          return;
+        }
 
         // เก็บข้อมูลผู้ใช้ใน SharedPreferences
         await SharedPreferenceHelper().saveUserDisplayName(name);
@@ -65,6 +78,8 @@ class _LoginState extends State<LogIn> {
         await SharedPreferenceHelper().saveUserId(id);
         await SharedPreferenceHelper().saveUserPic(pic);
         await SharedPreferenceHelper().saveUserRole(role);
+        await SharedPreferenceHelper()
+            .saveUserStatus(status); // เพิ่มการบันทึกสถานะ
 
         // นำทางไปยังหน้าต่างๆ ตามบทบาท
         if (role == 'sitter') {

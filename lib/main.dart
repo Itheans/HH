@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:myproject/Admin/AdminPage.dart';
-import 'package:myproject/Admin/AdminLoginPage.dart'; // เพิ่มการนำเข้าไฟล์
+import 'package:myproject/Admin/AdminLoginPage.dart';
 import 'package:myproject/Catpage.dart/CatDetailsPage.dart';
 import 'package:myproject/Catpage.dart/CatRegistrationPage.dart';
 import 'package:myproject/page2.dart/homesitter.dart';
@@ -17,6 +17,7 @@ import 'package:myproject/pages.dart/login.dart';
 import 'package:myproject/pages.dart/onboard.dart';
 import 'package:myproject/pages.dart/sigup.dart';
 import 'package:myproject/services/auth.dart';
+import 'package:myproject/utils/check_status_wrapper.dart'; // เพิ่ม import
 import 'package:myproject/widget/app_constant.dart';
 
 void main() async {
@@ -49,10 +50,11 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => const LogIn(),
+        '/': (context) =>
+            const CheckStatusWrapper(), // เปลี่ยนจาก LogIn เป็น CheckStatusWrapper
+        '/login': (context) => const LogIn(),
         '/signup': (context) => const SignUp(),
-        '/admin': (context) =>
-            const AdminLoginPage(), // เปลี่ยนจาก AdminPanel เป็น AdminLoginPage
+        '/admin': (context) => const AdminLoginPage(),
       },
     );
   }
