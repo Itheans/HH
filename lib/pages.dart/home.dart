@@ -116,12 +116,96 @@ class _MyWidgetState extends State<Home> {
       final bookingData = doc.data() as Map<String, dynamic>;
       final sitterId = bookingData['sitterId'];
 
-      if (sitterId != null) {
+      // เพิ่มการตรวจสอบว่า sitterId มีค่าและไม่เป็นค่าว่าง
+      if (sitterId == null || sitterId.toString().isEmpty) {
+        print('Warning: booking ${doc.id} has empty or null sitterId');
+
+        // เพิ่มข้อมูลแม้ไม่พบผู้รับเลี้ยง แต่ใส่ป้ายกำกับ
+        DateTime? startDate;
+        DateTime? endDate;
+
+        if (bookingData['dates'] != null) {
+          List<Timestamp> timestamps =
+              List<Timestamp>.from(bookingData['dates']);
+          if (timestamps.isNotEmpty) {
+            timestamps.sort((a, b) => a.compareTo(b));
+            startDate = timestamps.first.toDate();
+            endDate = timestamps.last.toDate();
+          }
+        }
+
+        tempBookings.add({
+          'id': doc.id,
+          'sitterName': 'ไม่พบข้อมูลผู้รับเลี้ยง',
+          'sitterPhoto': '',
+          'status': bookingData['status'] ?? 'pending',
+          'startDate': startDate,
+          'endDate': endDate,
+          'price': bookingData['totalPrice'],
+          'cats': await _fetchCatData(bookingData['catIds']),
+        });
+        return;
+      }
+
+      try {
         // ดึงข้อมูลผู้รับเลี้ยง
-        final sitterDoc = await FirebaseFirestore.instance
+        DocumentSnapshot sitterDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(sitterId)
             .get();
+
+        // เพิ่มการตรวจสอบว่าเอกสารมีอยู่จริง
+        if (!sitterDoc.exists) {
+          print(
+              'Warning: sitter with ID $sitterId not found for booking ${doc.id}');
+
+          // ดึงข้อมูลวันที่ฝาก
+          DateTime? startDate;
+          DateTime? endDate;
+
+          if (bookingData['dates'] != null) {
+            List<Timestamp> timestamps =
+                List<Timestamp>.from(bookingData['dates']);
+            if (timestamps.isNotEmpty) {
+              timestamps.sort((a, b) => a.compareTo(b));
+              startDate = timestamps.first.toDate();
+              endDate = timestamps.last.toDate();
+            }
+          }
+
+          // ดึงข้อมูลแมวที่ฝากเลี้ยง
+          List<Map<String, dynamic>> cats = [];
+          if (bookingData['catIds'] != null) {
+            cats = await _fetchCatData(bookingData['catIds']);
+          }
+
+          // เพิ่มข้อมูลการจองแม้ไม่พบผู้รับเลี้ยง
+          tempBookings.add({
+            'id': doc.id,
+            'sitterName': 'ไม่พบข้อมูลผู้รับเลี้ยง',
+            'sitterPhoto': '',
+            'status': bookingData['status'] ?? 'pending',
+            'startDate': startDate,
+            'endDate': endDate,
+            'price': bookingData['totalPrice'],
+            'cats': cats,
+          });
+          return;
+        }
+
+        // ดึงข้อมูลวันที่ฝาก
+        DateTime? startDate;
+        DateTime? endDate;
+
+        if (bookingData['dates'] != null) {
+          List<Timestamp> timestamps =
+              List<Timestamp>.from(bookingData['dates']);
+          if (timestamps.isNotEmpty) {
+            timestamps.sort((a, b) => a.compareTo(b));
+            startDate = timestamps.first.toDate();
+            endDate = timestamps.last.toDate();
+          }
+        }
 
         // ดึงข้อมูลแมวที่ฝากเลี้ยง
         List<Map<String, dynamic>> cats = [];
@@ -152,7 +236,23 @@ class _MyWidgetState extends State<Home> {
           }
         }
 
-        // หาวันที่เริ่มต้นและสิ้นสุด
+        // เพิ่มข้อมูลการจองที่สมบูรณ์
+        tempBookings.add({
+          'id': doc.id,
+          'sitterName': (sitterDoc.data() as Map<String, dynamic>)['name'] ??
+              'ไม่ระบุชื่อ',
+          'sitterPhoto':
+              (sitterDoc.data() as Map<String, dynamic>)['photo'] ?? '',
+          'status': bookingData['status'] ?? 'pending',
+          'startDate': startDate,
+          'endDate': endDate,
+          'price': bookingData['totalPrice'],
+          'cats': cats,
+        });
+      } catch (e) {
+        print('Error fetching sitter data: $e');
+
+        // กรณีเกิดข้อผิดพลาดในการดึงข้อมูลผู้รับเลี้ยง แต่ยังต้องแสดงรายการการจอง
         DateTime? startDate;
         DateTime? endDate;
 
@@ -168,18 +268,53 @@ class _MyWidgetState extends State<Home> {
 
         tempBookings.add({
           'id': doc.id,
-          'sitterName': sitterDoc.data()?['name'] ?? 'ไม่ระบุชื่อ',
-          'sitterPhoto': sitterDoc.data()?['photo'] ?? '',
+          'sitterName': 'ไม่พบข้อมูลผู้รับเลี้ยง',
+          'sitterPhoto': '',
           'status': bookingData['status'] ?? 'pending',
           'startDate': startDate,
           'endDate': endDate,
           'price': bookingData['totalPrice'],
-          'cats': cats,
+          'cats': await _fetchCatData(bookingData['catIds']),
         });
       }
     } catch (e) {
       print('Error processing booking: $e');
     }
+  }
+
+// เพิ่มฟังก์ชันสำหรับดึงข้อมูลแมว
+  Future<List<Map<String, dynamic>>> _fetchCatData(
+      List<dynamic>? catIds) async {
+    List<Map<String, dynamic>> cats = [];
+    if (catIds == null || catIds.isEmpty) return cats;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return cats;
+
+    for (var catId in catIds) {
+      try {
+        if (catId == null || catId.toString().isEmpty) continue;
+
+        final catDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('cats')
+            .doc(catId.toString())
+            .get();
+
+        if (catDoc.exists) {
+          cats.add({
+            'id': catDoc.id,
+            'name': catDoc.data()?['name'] ?? 'ไม่ระบุชื่อ',
+            'imagePath': catDoc.data()?['imagePath'] ?? '',
+          });
+        }
+      } catch (e) {
+        print('Error loading cat data: $e');
+      }
+    }
+
+    return cats;
   }
 
   String _getStatusText(String status) {

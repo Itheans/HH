@@ -11,6 +11,7 @@ class BookingScreen extends StatefulWidget {
   final List<String> catIds;
   final List<DateTime> selectedDates;
   final double pricePerDay;
+  final String? bookingRef; // เพิ่ม parameter นี้
 
   const BookingScreen({
     Key? key,
@@ -18,6 +19,7 @@ class BookingScreen extends StatefulWidget {
     required this.selectedDates,
     required this.pricePerDay,
     required this.catIds,
+    this.bookingRef, // เพิ่ม optional parameter
   }) : super(key: key);
 
   @override
@@ -52,25 +54,50 @@ class _BookingScreenState extends State<BookingScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("กรุณาเข้าสู่ระบบ");
 
-      // ดึงข้อมูลแมวที่มีสถานะ isForSitting เป็น true
-      final catsSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('cats')
-          .where('isForSitting', isEqualTo: true)
-          .get();
-
-      List<String> catIds = catsSnapshot.docs.map((doc) => doc.id).toList();
-
-      if (catIds.isEmpty) {
-        throw Exception("กรุณาเลือกแมวที่ต้องการฝากเลี้ยง");
-      }
-
       // คำนวณค่าบริการทั้งหมด
       final totalPrice = widget.pricePerDay * widget.selectedDates.length;
 
       // ดีบัก: แสดงค่าบริการที่จะชำระ
       print("ค่าบริการที่ต้องชำระ: $totalPrice");
+      print("Booking Reference: ${widget.bookingRef}");
+
+      // ถ้ามี bookingRef ให้นำ catIds จาก booking_request มาใช้
+      List<String> catIds = widget.catIds;
+      if (widget.bookingRef != null) {
+        try {
+          final bookingDoc = await _firestore
+              .collection('booking_requests')
+              .doc(widget.bookingRef)
+              .get();
+
+          if (bookingDoc.exists) {
+            final bookingData = bookingDoc.data();
+            if (bookingData != null && bookingData.containsKey('catIds')) {
+              catIds = List<String>.from(bookingData['catIds']);
+              print("Using catIds from booking_request: $catIds");
+            }
+          }
+        } catch (e) {
+          print("Error fetching booking_request data: $e");
+        }
+      }
+
+      // ดึงข้อมูลแมวที่มีสถานะ isForSitting เป็น true (ถ้า catIds ว่าง)
+      if (catIds.isEmpty) {
+        final catsSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('cats')
+            .where('isForSitting', isEqualTo: true)
+            .get();
+
+        catIds = catsSnapshot.docs.map((doc) => doc.id).toList();
+        print("Using catIds from isForSitting: $catIds");
+      }
+
+      if (catIds.isEmpty) {
+        throw Exception("กรุณาเลือกแมวที่ต้องการฝากเลี้ยง");
+      }
 
       // ตรวจสอบยอดเงินในกระเป๋าเงินของผู้ใช้ - ทั้งจาก SharedPreferences และ Firestore
       double walletFromPrefs = 0;

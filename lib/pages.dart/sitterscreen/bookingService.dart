@@ -5,9 +5,6 @@ class BookingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Create a new booking with proper availability checking
-  // แก้ไขฟังก์ชัน createBooking
-  // ตำแหน่งที่ต้องแก้: ส่วนประกาศฟังก์ชัน createBooking
   Future<String> createBooking({
     required String sitterId,
     required List<DateTime> dates,
@@ -22,6 +19,18 @@ class BookingService {
       final currentUser = _auth.currentUser;
       if (currentUser == null) {
         throw Exception('กรุณาเข้าสู่ระบบก่อนทำการจอง');
+      }
+
+      // เพิ่มการตรวจสอบว่า sitterId ไม่เป็นค่าว่าง
+      if (sitterId.isEmpty) {
+        throw Exception('ไม่พบข้อมูล Sitter ID');
+      }
+
+      // เพิ่มการตรวจสอบว่า sitterId มีอยู่จริงในฐานข้อมูล
+      DocumentSnapshot sitterCheck =
+          await _firestore.collection('users').doc(sitterId).get();
+      if (!sitterCheck.exists) {
+        throw Exception('ไม่พบข้อมูลผู้รับเลี้ยง');
       }
 
       // ถ้าไม่มี catIds ให้ดึงจาก Firestore
@@ -105,12 +114,14 @@ class BookingService {
           'description': 'ชำระค่าบริการรับเลี้ยงแมว',
           'status': 'completed',
           'timestamp': FieldValue.serverTimestamp(),
-          'bookingId': bookingRef.id
+          'bookingId': bookingRef.id,
+          'sitterId': sitterId // เพิ่ม sitterId ในประวัติธุรกรรม
         });
 
         return bookingRef.id;
       });
     } catch (e) {
+      print('Error in createBooking: $e');
       throw Exception(e.toString());
     }
   }

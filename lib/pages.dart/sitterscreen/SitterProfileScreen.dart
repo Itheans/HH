@@ -14,12 +14,14 @@ class SitterProfileScreen extends StatefulWidget {
   final String sitterId;
   final List<DateTime> targetDates;
   final List<String> catIds;
+  final String? bookingRef; // เพิ่ม parameter นี้
 
   const SitterProfileScreen({
     Key? key,
     required this.sitterId,
     required this.targetDates,
-    required this.catIds, // Add required parameter
+    required this.catIds,
+    this.bookingRef, // เพิ่ม optional parameter
   }) : super(key: key);
 
   @override
@@ -388,8 +390,33 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
           padding: const EdgeInsets.all(16.0),
           child: ElevatedButton(
             onPressed: () async {
-              // ตรวจสอบยอดเงินในกระเป๋าเงินก่อนไปหน้าจอง
+              // เพิ่มการตรวจสอบว่ามี sitterId หรือไม่
+              if (widget.sitterId.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content:
+                          Text('ไม่พบข้อมูลผู้รับเลี้ยง กรุณาลองใหม่อีกครั้ง')),
+                );
+                return;
+              }
+
               try {
+                // เพิ่มการตรวจสอบว่า sitterId มีอยู่จริงในฐานข้อมูล
+                DocumentSnapshot sitterCheck = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(widget.sitterId)
+                    .get();
+
+                if (!sitterCheck.exists) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(
+                            'ไม่พบข้อมูลผู้รับเลี้ยง กรุณาลองใหม่อีกครั้ง')),
+                  );
+                  return;
+                }
+
+                // ตรวจสอบยอดเงินในกระเป๋าเงินก่อนไปหน้าจอง
                 User? currentUser = FirebaseAuth.instance.currentUser;
                 if (currentUser == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -423,19 +450,22 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
                   }
                 }
 
-                // ใช้ยอดเงินที่มากกว่า
+                // ใช้ยอดเงินที่มาก
+                // ใช้ยอดเงินที่มากกว่าระหว่าง SharedPreferences และ Firestore
+                // เพื่อป้องกันการสูญเสียเงินจากการซิงค์ข้อมูลผิดพลาด
                 double currentWallet = walletFromFirestore > walletFromPrefs
                     ? walletFromFirestore
                     : walletFromPrefs;
-
-                // คำนวณราคาทั้งหมด
-                double totalPrice = (_sitterData!['pricePerDay'] ?? 50.0) *
-                    widget.targetDates.length;
 
                 // แสดงข้อมูลสำหรับดีบัก
                 print("ยอดเงินจาก SharedPreferences: $walletFromPrefs");
                 print("ยอดเงินจาก Firestore: $walletFromFirestore");
                 print("ยอดเงินที่ใช้ตรวจสอบ: $currentWallet");
+
+                // คำนวณราคาทั้งหมด
+                double totalPrice = (_sitterData!['pricePerDay'] ?? 50.0) *
+                    widget.targetDates.length;
+
                 print("ค่าบริการทั้งหมด: $totalPrice");
 
                 // ตรวจสอบว่ามีเงินเพียงพอหรือไม่
@@ -459,10 +489,12 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
                       selectedDates: widget.targetDates,
                       catIds: widget.catIds,
                       pricePerDay: _sitterData!['pricePerDay'] ?? 50.0,
+                      bookingRef: widget.bookingRef, // ส่งต่อข้อมูล reference
                     ),
                   ),
                 );
               } catch (e) {
+                print('Error checking wallet balance: $e');
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
                 );

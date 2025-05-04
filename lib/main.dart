@@ -58,4 +58,207 @@ class MyApp extends StatelessWidget {
       },
     );
   }
+
+  Future<void> _checkAndFixBookings() async {
+    try {
+      // ตรวจสอบผู้ใช้ที่ล็อกอินอยู่
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      print('Starting database check and fix operations...');
+
+      // ตรวจสอบการจองทั้งหมดที่มี sitterId เป็นค่าว่าง
+      final bookingsSnapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('userId', isEqualTo: currentUser.uid)
+          .get();
+
+      print('Found ${bookingsSnapshot.docs.length} bookings for current user');
+
+      for (var doc in bookingsSnapshot.docs) {
+        final data = doc.data();
+
+        if (!data.containsKey('sitterId') ||
+            data['sitterId'] == null ||
+            data['sitterId'] == '') {
+          print('Found booking with missing sitterId: ${doc.id}');
+
+          // อัพเดตสถานะเป็น 'cancelled'
+          await FirebaseFirestore.instance
+              .collection('bookings')
+              .doc(doc.id)
+              .update({
+            'status': 'cancelled',
+            'cancelReason': 'ข้อมูลการจองไม่สมบูรณ์ (ไม่มี sitterId)',
+            'updatedAt': FieldValue.serverTimestamp()
+          });
+
+          print('Updated booking ${doc.id} status to cancelled');
+        } else {
+          // ตรวจสอบว่า sitterId ที่มีอยู่จริงหรือไม่
+          final sitterId = data['sitterId'];
+          final sitterDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(sitterId)
+              .get();
+
+          if (!sitterDoc.exists) {
+            print(
+                'Found booking with invalid sitterId: ${doc.id}, sitterId: $sitterId');
+
+            // อัพเดตสถานะเป็น 'cancelled'
+            await FirebaseFirestore.instance
+                .collection('bookings')
+                .doc(doc.id)
+                .update({
+              'status': 'cancelled',
+              'cancelReason': 'ข้อมูลผู้รับเลี้ยงไม่ถูกต้อง',
+              'updatedAt': FieldValue.serverTimestamp()
+            });
+
+            print(
+                'Updated booking ${doc.id} status to cancelled (invalid sitterId)');
+          }
+        }
+      }
+
+      // ทำเช่นเดียวกันสำหรับ booking_requests
+      final requestsSnapshot = await FirebaseFirestore.instance
+          .collection('booking_requests')
+          .where('userId', isEqualTo: currentUser.uid)
+          .get();
+
+      print(
+          'Found ${requestsSnapshot.docs.length} booking requests for current user');
+
+      for (var doc in requestsSnapshot.docs) {
+        final data = doc.data();
+
+        if (!data.containsKey('sitterId') ||
+            data['sitterId'] == null ||
+            data['sitterId'] == '') {
+          print('Found booking request with missing sitterId: ${doc.id}');
+
+          // อัพเดตสถานะเป็น 'cancelled'
+          await FirebaseFirestore.instance
+              .collection('booking_requests')
+              .doc(doc.id)
+              .update({
+            'status': 'cancelled',
+            'cancelReason': 'ข้อมูลการจองไม่สมบูรณ์ (ไม่มี sitterId)',
+            'updatedAt': FieldValue.serverTimestamp()
+          });
+
+          print('Updated booking request ${doc.id} status to cancelled');
+        } else {
+          // ตรวจสอบว่า sitterId ที่มีอยู่จริงหรือไม่
+          final sitterId = data['sitterId'];
+          final sitterDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(sitterId)
+              .get();
+
+          if (!sitterDoc.exists) {
+            print(
+                'Found booking request with invalid sitterId: ${doc.id}, sitterId: $sitterId');
+
+            // อัพเดตสถานะเป็น 'cancelled'
+            await FirebaseFirestore.instance
+                .collection('booking_requests')
+                .doc(doc.id)
+                .update({
+              'status': 'cancelled',
+              'cancelReason': 'ข้อมูลผู้รับเลี้ยงไม่ถูกต้อง',
+              'updatedAt': FieldValue.serverTimestamp()
+            });
+
+            print(
+                'Updated booking request ${doc.id} status to cancelled (invalid sitterId)');
+          }
+        }
+      }
+
+      print('Database check and fix operations completed');
+    } catch (e) {
+      print('Error checking and fixing bookings: $e');
+    }
+  }
+
+  // เพิ่มในไฟล์ lib/main.dart
+  Future<void> _fixCorruptedSitterIds() async {
+    try {
+      print('Starting database repair for corrupted sitterIds...');
+
+      // ตรวจสอบผู้ใช้ที่ล็อกอินอยู่
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // 1. ดึงข้อมูลผู้รับเลี้ยงทั้งหมด
+      final sittersSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'sitter')
+          .limit(10) // จำกัดจำนวน
+          .get();
+
+      if (sittersSnapshot.docs.isEmpty) {
+        print('No sitters found in database!');
+        return;
+      }
+
+      // รายชื่อ sitterIds ที่มีอยู่จริง
+      List<String> validSitterIds =
+          sittersSnapshot.docs.map((doc) => doc.id).toList();
+      print('Valid sitter IDs: $validSitterIds');
+
+      // 2. ตรวจสอบการจองที่มี sitterId ไม่ถูกต้อง
+      final bookingsSnapshot = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('userId', isEqualTo: currentUser.uid)
+          .get();
+
+      for (var doc in bookingsSnapshot.docs) {
+        final data = doc.data();
+        final sitterId = data['sitterId'];
+
+        // ตรวจสอบว่า sitterId มีอยู่ในรายชื่อที่ถูกต้องหรือไม่
+        if (sitterId == null ||
+            sitterId == '' ||
+            !validSitterIds.contains(sitterId)) {
+          print(
+              'Found booking with invalid sitterId: ${doc.id}, current sitterId: $sitterId');
+
+          // แก้ไขโดยใส่ sitterId ที่ถูกต้องตัวแรกจากรายการ
+          if (validSitterIds.isNotEmpty) {
+            await FirebaseFirestore.instance
+                .collection('bookings')
+                .doc(doc.id)
+                .update({
+              'sitterId': validSitterIds[0],
+              'fixedAt': FieldValue.serverTimestamp(),
+              'fixNote': 'Auto-fixed invalid sitterId',
+            });
+
+            print(
+                'Fixed booking ${doc.id} with new sitterId: ${validSitterIds[0]}');
+          }
+        }
+      }
+
+      print('Database repair completed');
+    } catch (e) {
+      print('Error fixing corrupted sitterIds: $e');
+    }
+  }
+
+// เรียกใช้ในฟังก์ชัน main()
+  void main() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp();
+    Stripe.publishableKey = publishableKey;
+
+    // เพิ่มการซ่อมแซมฐานข้อมูล
+    await _fixCorruptedSitterIds();
+
+    runApp(const MyApp());
+  }
 }

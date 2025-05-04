@@ -112,12 +112,19 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
         final bookingId = _bookingsList[index].id;
         final sitterId = bookingData['sitterId'];
 
+        // เพิ่มการตรวจสอบและล็อกสถานะ
+        print('Processing booking: $bookingId with sitterId: $sitterId');
+
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance
               .collection('users')
               .doc(sitterId)
               .get(),
           builder: (context, sitterSnapshot) {
+            // เพิ่มการล็อกสถานะ snapshot
+            print(
+                'Sitter snapshot: exists=${sitterSnapshot.hasData ? sitterSnapshot.data!.exists : false}');
+
             if (!sitterSnapshot.hasData) {
               return Card(
                 margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
@@ -130,6 +137,9 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
             final sitterData = sitterSnapshot.data!.exists
                 ? sitterSnapshot.data!.data() as Map<String, dynamic>
                 : {'name': 'ไม่พบข้อมูลผู้รับเลี้ยง', 'photo': ''};
+
+            // เพิ่มการล็อกข้อมูลผู้รับเลี้ยง
+            print('Sitter data: $sitterData');
 
             return Card(
               margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
