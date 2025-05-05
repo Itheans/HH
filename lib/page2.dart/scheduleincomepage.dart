@@ -40,9 +40,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
   // รายการการจองตามวันที่เลือก
   List<dynamic> _selectedEvents = [];
 
-  // เพิ่มแคชข้อมูลผู้ใช้เพื่อลดการเรียก Firestore ซ้ำๆ
-  Map<String, Map<String, dynamic>> _userCache = {};
-
   @override
   void initState() {
     super.initState();
@@ -56,28 +53,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  // เพิ่มฟังก์ชันในการดึงข้อมูลผู้ใช้
-  Future<Map<String, dynamic>?> _getUserData(String userId) async {
-    // ตรวจสอบแคชข้อมูลก่อน
-    if (_userCache.containsKey(userId)) {
-      return _userCache[userId];
-    }
-
-    try {
-      DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(userId).get();
-      if (userDoc.exists) {
-        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-        // เก็บข้อมูลในแคช
-        _userCache[userId] = userData;
-        return userData;
-      }
-    } catch (e) {
-      print('Error getting user data: $e');
-    }
-    return null;
   }
 
   // โหลดข้อมูลการจอง
@@ -95,32 +70,14 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
       final QuerySnapshot snapshot = await _firestore
           .collection('bookings')
           .where('sitterId', isEqualTo: currentUser.uid)
-          .where('status', whereIn: [
-        'accepted',
-        'completed'
-      ]) // รวมทั้งสถานะ accepted และ completed
+          .where('status', isEqualTo: 'accepted')
           .get();
 
       final Map<DateTime, List<dynamic>> events = {};
 
       for (var doc in snapshot.docs) {
-        // สร้าง ID สำหรับการจอง
-        final bookingId = doc.id;
-
-        // ดึงข้อมูลจากเอกสาร
         final data = doc.data() as Map<String, dynamic>;
-
-        // เพิ่ม ID เข้าไปในข้อมูล
-        data['id'] = bookingId;
-
-        // ดึงข้อมูลวันที่
         final List<dynamic> dates = data['dates'] ?? [];
-
-        // ล่วงหน้าโหลดข้อมูลผู้ใช้เพื่อแคช
-        if (data.containsKey('userId')) {
-          final userId = data['userId'] as String;
-          await _getUserData(userId);
-        }
 
         for (var dateData in dates) {
           final DateTime date = (dateData as Timestamp).toDate();
@@ -159,7 +116,8 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
       final QuerySnapshot snapshot = await _firestore
           .collection('bookings')
           .where('sitterId', isEqualTo: currentUser.uid)
-          .where('status', whereIn: ['accepted', 'completed']).get();
+          .where('status', isEqualTo: 'accepted')
+          .get();
 
       double total = 0;
       double monthly = 0;
@@ -226,7 +184,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
     }
   }
 
-  // แก้ไขฟังก์ชัน _completeBooking
   Future<void> _completeBooking(String bookingId) async {
     try {
       // ดึงข้อมูลการจองเพื่อเอายอดเงิน
@@ -269,7 +226,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
         transaction.update(_firestore.collection('bookings').doc(bookingId), {
           'status': 'completed',
           'completedAt': FieldValue.serverTimestamp(),
-          'paymentStatus': 'completed', // เพิ่มสถานะการชำระเงิน
         });
 
         // อัพเดตยอดเงินใน wallet
@@ -296,10 +252,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
       // อัพเดต SharedPreferences
       await SharedPreferenceHelper().saveUserWallet(walletStr);
 
-      // รีโหลดข้อมูล
-      await _loadBookingEvents();
-      await _loadIncomeData();
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('การดูแลเสร็จสิ้นเรียบร้อยแล้ว'),
@@ -318,55 +270,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
   List<dynamic> _getEventsForDay(DateTime day) {
     final normalizedDay = DateTime(day.year, day.month, day.day);
     return _bookingEvents[normalizedDay] ?? [];
-  }
-
-  void _showBookingDetailsDialog(Map<String, dynamic> booking) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('รายละเอียดการจอง'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDetailRow('ชื่อผู้จอง', booking['userName'] ?? 'ไม่ระบุ'),
-                _buildDetailRow('วันที่', booking['date'] ?? 'ไม่ระบุ'),
-                _buildDetailRow('เวลา', booking['time'] ?? 'ไม่ระบุ'),
-                _buildDetailRow('บริการ', booking['serviceName'] ?? 'ไม่ระบุ'),
-                _buildDetailRow('ราคา', '${booking['totalPrice'] ?? 0} บาท'),
-                _buildDetailRow('สถานะ', booking['status'] ?? 'ไม่ระบุ'),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('ปิด'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -490,33 +393,90 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
                         itemBuilder: (context, index) {
                           final booking =
                               _selectedEvents[index] as Map<String, dynamic>;
-                          final String userId =
-                              booking['userId'] as String? ?? '';
-
-                          // แสดงตัวโหลดขณะรอข้อมูลผู้ใช้
-                          if (userId.isEmpty) {
-                            return _buildBookingCardSkeleton();
-                          }
-
-                          return FutureBuilder<Map<String, dynamic>?>(
-                            future: _getUserData(userId),
+                          return FutureBuilder<DocumentSnapshot>(
+                            future: _firestore
+                                .collection('users')
+                                .doc(booking['userId'])
+                                .get(),
                             builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return _buildBookingCardSkeleton();
+                              if (!snapshot.hasData) {
+                                return const Card(
+                                  margin: EdgeInsets.only(bottom: 12),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Center(
+                                        child: CircularProgressIndicator()),
+                                  ),
+                                );
                               }
 
-                              if (!snapshot.hasData || snapshot.data == null) {
-                                return _buildBookingCardError(booking);
-                              }
-
-                              final userData = snapshot.data!;
+                              final userData = snapshot.data!.data()
+                                  as Map<String, dynamic>?;
                               final userName =
-                                  userData['name'] ?? 'ไม่ระบุชื่อ';
-                              final userPhoto = userData['photo'] ?? '';
+                                  userData?['name'] ?? 'ไม่ระบุชื่อ';
+                              final userPhoto = userData?['photo'];
 
-                              return _buildBookingCard(
-                                  booking, userName, userPhoto);
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 3,
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(12),
+                                  leading: CircleAvatar(
+                                    backgroundImage: userPhoto != null &&
+                                            userPhoto.isNotEmpty
+                                        ? NetworkImage(userPhoto)
+                                        : null,
+                                    child:
+                                        userPhoto == null || userPhoto.isEmpty
+                                            ? const Icon(Icons.person)
+                                            : null,
+                                  ),
+                                  title: Text(
+                                    userName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.pets,
+                                              size: 16,
+                                              color: Colors.grey[600]),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${(booking['catIds'] as List<dynamic>?)?.length ?? 0} ตัว',
+                                            style: TextStyle(
+                                                color: Colors.grey[700]),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Icon(Icons.payments,
+                                              size: 16,
+                                              color: Colors.green[600]),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${booking['totalPrice'] ?? 0} บาท',
+                                            style: TextStyle(
+                                              color: Colors.green[700],
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: const Icon(Icons.arrow_forward_ios,
+                                      size: 18),
+                                  onTap: () {
+                                    // แสดงรายละเอียดการจอง
+                                    _showBookingDetailsDialog(booking);
+                                  },
+                                ),
+                              );
                             },
                           );
                         },
@@ -524,175 +484,6 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
               ),
             ],
           );
-  }
-
-  // สร้าง Card แบบ Skeleton (โครงร่าง) สำหรับแสดงขณะกำลังโหลดข้อมูล
-  Widget _buildBookingCardSkeleton() {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        height: 90,
-        child: Row(
-          children: [
-            // Skeleton สำหรับรูปโปรไฟล์
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Skeleton สำหรับชื่อ
-                  Container(
-                    width: 120,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Skeleton สำหรับข้อมูลเพิ่มเติม
-                  Container(
-                    width: 180,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            // Skeleton สำหรับไอคอน
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                shape: BoxShape.circle,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // สร้าง Card แสดงข้อผิดพลาด
-  Widget _buildBookingCardError(Map<String, dynamic> booking) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.red[50],
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: CircleAvatar(
-          backgroundColor: Colors.red[100],
-          child: const Icon(Icons.error_outline, color: Colors.red),
-        ),
-        title: const Text(
-          'ไม่สามารถโหลดข้อมูลผู้ใช้',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('การจองรหัส: ${booking['id'] ?? "ไม่ระบุ"}'),
-            Row(
-              children: [
-                Icon(Icons.pets, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '${(booking['catIds'] as List<dynamic>?)?.length ?? 0} ตัว',
-                  style: TextStyle(color: Colors.grey[700]),
-                ),
-                const SizedBox(width: 16),
-                Icon(Icons.payments, size: 16, color: Colors.green[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '${booking['totalPrice'] ?? 0} บาท',
-                  style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-        onTap: () {
-          // แสดงรายละเอียดการจอง
-          _showBookingDetailsDialog(booking);
-        },
-      ),
-    );
-  }
-
-  // สร้าง Card แสดงข้อมูลการจอง
-  Widget _buildBookingCard(
-      Map<String, dynamic> booking, String userName, String userPhoto) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 3,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: CircleAvatar(
-          backgroundImage:
-              userPhoto.isNotEmpty ? NetworkImage(userPhoto) : null,
-          child: userPhoto.isEmpty ? const Icon(Icons.person) : null,
-        ),
-        title: Text(
-          userName,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.pets, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '${(booking['catIds'] as List<dynamic>?)?.length ?? 0} ตัว',
-                  style: TextStyle(color: Colors.grey[700]),
-                ),
-                const SizedBox(width: 16),
-                Icon(Icons.payments, size: 16, color: Colors.green[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '${booking['totalPrice'] ?? 0} บาท',
-                  style: TextStyle(
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-        onTap: () {
-          // แสดงรายละเอียดการจอง
-          _showBookingDetailsDialog(booking);
-        },
-      ),
-    );
   }
 
   // แท็บรายได้
@@ -862,6 +653,7 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
         ],
         border: Border.all(
           color: color.withOpacity(0.2),
+          width: 1,
         ),
       ),
       child: Column(
@@ -869,25 +661,33 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
         children: [
           Row(
             children: [
-              Icon(icon, color: color),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             currencyFormat.format(amount),
             style: TextStyle(
-              fontSize: 24,
+              color: Colors.blue.shade700,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: color,
             ),
           ),
         ],
@@ -895,26 +695,95 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
     );
   }
 
-  // กราฟรายได้
+  // กราฟแสดงรายได้
   Widget _buildIncomeChart() {
+    final List<String> months = [
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.'
+    ];
+
     return LineChart(
       LineChartData(
-        gridData: FlGridData(show: true),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: true,
+          horizontalInterval: _maxY / 5,
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: Colors.grey.withOpacity(0.3),
+              strokeWidth: 1,
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: Colors.grey.withOpacity(0.3),
+              strokeWidth: 1,
+            );
+          },
+        ),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-            ),
-          ),
+          show: true,
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 22,
+              reservedSize: 30,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                // Add type annotation for clarity
+                if (value < 1 || value > 12 || value % 1 != 0) {
+                  return const SizedBox();
+                }
+                return SideTitleWidget(
+                  axisSide: meta.axisSide,
+                  child: Text(
+                    months[value.toInt() - 1],
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 12,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 50,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                final currencyFormat = NumberFormat.compact(locale: 'th');
+                return SideTitleWidget(
+                  axisSide: meta.axisSide, // Changed from 'axisSide' to 'side'
+                  child: Text(
+                    currencyFormat.format(value),
+                    style: const TextStyle(
+                      color: Colors.black87,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          topTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
-        borderData: FlBorderData(show: true),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        ),
         minX: 1,
         maxX: 12,
         minY: 0,
@@ -924,10 +793,12 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
             spots: _incomeChartData,
             isCurved: true,
             color: Colors.teal,
-            barWidth: 4,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: FlDotData(show: true),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.teal.withOpacity(0.3),
+              color: Colors.teal.withOpacity(0.2),
             ),
           ),
         ],
@@ -937,55 +808,537 @@ class _ScheduleIncomePageState extends State<ScheduleIncomePage>
 
   // การวิเคราะห์รายได้
   Widget _buildIncomeAnalysis() {
-    final currencyFormat =
-        NumberFormat.currency(locale: 'th_TH', symbol: '฿', decimalDigits: 0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'การวิเคราะห์รายได้',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        const SizedBox(height: 16),
-        _buildAnalysisRow(
-          'รายได้เฉลี่ยต่อเดือน',
-          currencyFormat.format(_totalIncome / 12),
-        ),
-        const SizedBox(height: 8),
-        _buildAnalysisRow(
-          'รายได้เฉลี่ยต่อสัปดาห์',
-          currencyFormat.format(_totalIncome / 52),
-        ),
-        const SizedBox(height: 8),
-        _buildAnalysisRow(
-          'รายได้เฉลี่ยต่อวัน',
-          currencyFormat.format(_totalIncome / 365),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.analytics, color: Colors.purple.shade700),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'การวิเคราะห์รายได้',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ข้อมูลการวิเคราะห์
+          _buildAnalysisItem(
+            'อัตรารายได้เฉลี่ยต่อการจอง',
+            _getTotalBookings() > 0 ? _totalIncome / _getTotalBookings() : 0,
+            Icons.attach_money,
+            Colors.green,
+            isAmount: true,
+          ),
+          const SizedBox(height: 12),
+          _buildAnalysisItem(
+            'จำนวนการจองทั้งหมด',
+            _getTotalBookings().toDouble(),
+            Icons.confirmation_number,
+            Colors.blue,
+            isAmount: false,
+          ),
+          _buildAnalysisItem(
+            'จำนวนการจองทั้งหมด',
+            _getTotalBookings().toDouble(),
+            Icons.confirmation_number,
+            Colors.blue,
+            isAmount: false,
+          ),
+          const SizedBox(height: 12),
+          _buildAnalysisItem(
+            'จำนวนวันทำงานทั้งหมด',
+            _getTotalWorkingDays().toDouble(),
+            Icons.work,
+            Colors.orange,
+            isAmount: false,
+          ),
+        ],
+      ),
     );
   }
 
-  // แถวการวิเคราะห์รายได้
-  Widget _buildAnalysisRow(String label, String value) {
+  // รายการวิเคราะห์
+  Widget _buildAnalysisItem(
+      String title, double value, IconData icon, Color color,
+      {required bool isAmount}) {
+    final currencyFormat =
+        NumberFormat.currency(locale: 'th_TH', symbol: '฿', decimalDigits: 0);
+
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 16),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.black87,
+            ),
+          ),
         ),
         Text(
-          value,
-          style: const TextStyle(
+          isAmount ? currencyFormat.format(value) : value.toInt().toString(),
+          style: TextStyle(
+            color: Colors.blue.shade700,
             fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
       ],
+    );
+  }
+
+  // นับจำนวนการจองทั้งหมด
+  int _getTotalBookings() {
+    final Set<String> uniqueBookings = {};
+
+    _bookingEvents.forEach((date, events) {
+      for (var event in events) {
+        uniqueBookings.add(event['id'] ?? '');
+      }
+    });
+
+    return uniqueBookings.length;
+  }
+
+  // นับจำนวนวันทำงานทั้งหมด
+  int _getTotalWorkingDays() {
+    return _bookingEvents.length;
+  }
+
+  // แสดงรายละเอียดการจอง
+  void _showBookingDetailsDialog(Map<String, dynamic> booking) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (_, scrollController) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                child: FutureBuilder<DocumentSnapshot>(
+                  future: _firestore
+                      .collection('users')
+                      .doc(booking['userId'])
+                      .get(),
+                  builder: (context, userSnapshot) {
+                    if (!userSnapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final userData =
+                        userSnapshot.data!.data() as Map<String, dynamic>?;
+                    final userName = userData?['name'] ?? 'ไม่ระบุชื่อ';
+                    final userEmail = userData?['email'] ?? 'ไม่ระบุอีเมล';
+                    final userPhone = userData?['phone'] ?? 'ไม่ระบุเบอร์โทร';
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'รายละเอียดการจอง',
+                              style: AppWidget.HeadlineTextFeildStyle(),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        const SizedBox(height: 16),
+
+                        // ข้อมูลผู้ใช้
+                        _buildDetailSection(
+                          'ข้อมูลผู้ใช้',
+                          Icons.person,
+                          Colors.blue,
+                          [
+                            _buildDetailItem('ชื่อ', userName),
+                            _buildDetailItem('อีเมล', userEmail),
+                            _buildDetailItem('เบอร์โทร', userPhone),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // ข้อมูลการจอง
+                        _buildDetailSection(
+                          'ข้อมูลการจอง',
+                          Icons.calendar_today,
+                          Colors.orange,
+                          [
+                            _buildDetailItem(
+                              'วันที่จอง',
+                              booking['createdAt'] != null
+                                  ? DateFormat('dd MMM yyyy, HH:mm').format(
+                                      (booking['createdAt'] as Timestamp)
+                                          .toDate())
+                                  : 'ไม่ระบุ',
+                            ),
+                            _buildDetailItem(
+                              'จำนวนแมว',
+                              '${(booking['catIds'] as List<dynamic>?)?.length ?? 0} ตัว',
+                            ),
+                            _buildDetailItem(
+                              'ราคา',
+                              '${booking['totalPrice'] ?? 0} บาท',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // ข้อมูลแมว
+                        _buildCatsSection(booking),
+                        const SizedBox(height: 20),
+
+                        // หมายเหตุ
+                        if (booking['notes'] != null &&
+                            booking['notes'].isNotEmpty)
+                          _buildDetailSection(
+                            'หมายเหตุ',
+                            Icons.note,
+                            Colors.purple,
+                            [
+                              _buildDetailItem('', booking['notes']),
+                            ],
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // สร้างส่วนรายละเอียด
+  Widget _buildDetailSection(
+      String title, IconData icon, Color color, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  // สร้างรายการรายละเอียด
+  Widget _buildDetailItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label.isNotEmpty) ...[
+            SizedBox(
+              width: 100,
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ส่วนแสดงข้อมูลแมว
+  Widget _buildCatsSection(Map<String, dynamic> booking) {
+    return FutureBuilder<QuerySnapshot>(
+      future: _firestore
+          .collection('users')
+          .doc(booking['userId'])
+          .collection('cats')
+          .where(FieldPath.documentId, whereIn: booking['catIds'] ?? [])
+          .get(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+              border: Border.all(
+                color: Colors.green.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.pets, color: Colors.green),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'ข้อมูลแมว',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('ไม่พบข้อมูลแมว'),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+            border: Border.all(
+              color: Colors.green.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.pets, color: Colors.green),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'ข้อมูลแมว',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: snapshot.data!.docs.length,
+                itemBuilder: (context, index) {
+                  final catData =
+                      snapshot.data!.docs[index].data() as Map<String, dynamic>;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.green.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            image: catData['imagePath'] != null &&
+                                    catData['imagePath'].isNotEmpty
+                                ? DecorationImage(
+                                    image: NetworkImage(catData['imagePath']),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: catData['imagePath'] == null ||
+                                  catData['imagePath'].isEmpty
+                              ? const Icon(Icons.pets, color: Colors.grey)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                catData['name'] ?? 'ไม่ระบุชื่อ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'สายพันธุ์: ${catData['breed'] ?? 'ไม่ระบุ'}',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'วัคซีน: ${catData['vaccinations'] ?? 'ไม่ระบุ'}',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (catData['description'] != null &&
+                                  catData['description'].isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'คำอธิบาย: ${catData['description']}',
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

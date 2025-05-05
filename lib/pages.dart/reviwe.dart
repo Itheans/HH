@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 class Review {
   final String id;
@@ -47,17 +48,17 @@ class ReviewConstants {
 }
 
 class ReviewsPage extends StatefulWidget {
-  final String itemId;
-  String sitterId; // เปลี่ยนจาก final เป็นแค่ String ธรรมดา
+  final String? itemId; // Keep this final
+  String? sitterId; // This can stay mutable if needed
 
   ReviewsPage({
     Key? key,
-    required this.itemId,
-    required this.sitterId,
+    this.itemId,
+    this.sitterId,
   }) : super(key: key);
 
   @override
-  _ReviewsPageState createState() => _ReviewsPageState();
+  State<ReviewsPage> createState() => _ReviewsPageState();
 }
 
 class _ReviewsPageState extends State<ReviewsPage> {
@@ -69,40 +70,125 @@ class _ReviewsPageState extends State<ReviewsPage> {
   List<Review> _reviews = [];
   double _averageRating = 0;
   String sitterName = '';
+  bool _hasFoundSitter = false;
+  String? _currentItemId; // Add this state variable
 
   @override
   void initState() {
     super.initState();
-    _setHardcodedSitterId().then((_) {
-      _initializeData();
-      _setupScrollListener();
-    });
-  }
+    _currentItemId = widget.itemId; // Initialize with widget value
 
-  // เพิ่มฟังก์ชันนี้ใน class _ReviewsPageState
-  Future<void> _setHardcodedSitterId() async {
-    // ระบุ sitterId ที่แน่นอนตรงนี้ - แทนที่ด้วย ID จริงของพี่เลี้ยงแมวที่คุณต้องการ
-    final String hardcodedSitterId = "SE9htBfMnRbSnTUgA9bViITgH6M2";
-
-    // อัปเดต sitterId ใน widget
-    setState(() {
-      // ในรูปแบบปกติจะไม่สามารถอัปเดต final ได้ แต่เราสามารถใช้ hack ดังนี้
-      (widget as dynamic).sitterId = hardcodedSitterId;
-    });
-
-    // โหลดข้อมูลใหม่
-    await _loadSitterData();
-
-    // ตรวจสอบว่าโหลดสำเร็จไหม
-    if (sitterName == 'Unknown') {
-      _showErrorSnackBar('ยังคงไม่สามารถโหลดข้อมูลพี่เลี้ยงแมวได้');
+    // ถ้ามีการระบุ sitterId มาแล้ว ให้ใช้ค่าที่ระบุมา
+    if (widget.sitterId != null && widget.sitterId!.isNotEmpty) {
+      _loadSitterData().then((_) {
+        _initializeData();
+        _setupScrollListener();
+      });
     } else {
-      _showSuccessSnackBar('โหลดข้อมูลพี่เลี้ยงแมวสำเร็จ: $sitterName');
+      // ถ้าไม่มีการระบุ sitterId ให้หาจากการจับคู่ล่าสุด
+      _loadMatchedSitter().then((_) {
+        if (_hasFoundSitter) {
+          _initializeData();
+          _setupScrollListener();
+        }
+      });
     }
   }
 
+  // เพิ่มฟังก์ชันสำหรับดึงข้อมูลผู้รับเลี้ยงจากการจับคู่ล่าสุด
+  Future<void> _loadMatchedSitter() async {
+    try {
+      setState(() => _isLoading = true);
+
+      // ดึงข้อมูลผู้ใช้ปัจจุบัน
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        _showErrorSnackBar('กรุณาเข้าสู่ระบบก่อนเข้าถึงหน้ารีวิว');
+        return;
+      }
+
+      // แก้ไขในไฟล์ lib/pages.dart/reviwe.dart ในฟังก์ชัน _loadMatchedSitter()
+      final bookingsQuery = await FirebaseFirestore.instance
+          .collection('bookings')
+          .where('userId', isEqualTo: currentUser.uid)
+          .where('status',
+              whereIn: ['completed', 'in_progress']) // เพิ่มสถานะอื่นๆ
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      // ถ้าไม่พบการจองที่เสร็จสมบูรณ์ในคอลเลคชัน bookings ให้ตรวจสอบใน booking_requests
+      if (bookingsQuery.docs.isEmpty) {
+        // และแก้ไขส่วนที่ค้นหาใน booking_requests ด้วย
+        final requestsQuery = await FirebaseFirestore.instance
+            .collection('booking_requests')
+            .where('userId', isEqualTo: currentUser.uid)
+            .where('status',
+                whereIn: ['completed', 'in_progress']) // เพิ่มสถานะอื่นๆ
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .get();
+
+        // ในฟังก์ชัน _loadMatchedSitter() เพิ่มการแสดงข้อความเมื่อไม่พบการจอง
+        if (bookingsQuery.docs.isEmpty && requestsQuery.docs.isEmpty) {
+          _showErrorSnackBar(
+              'ไม่พบการฝากเลี้ยงที่เสร็จสมบูรณ์ กรุณาตรวจสอบว่ามีการฝากเลี้ยงที่เสร็จสิ้นแล้วหรือไม่');
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        // ดึง sitterId จากการจอง
+        final requestData = requestsQuery.docs.first.data();
+        if (requestData.containsKey('sitterId')) {
+          setState(() {
+            widget.sitterId = requestData['sitterId'];
+            if (_currentItemId == null) {
+              _currentItemId = requestsQuery.docs.first.id;
+            }
+            _hasFoundSitter = true;
+          });
+          await _loadSitterData();
+        } else {
+          _showErrorSnackBar('ไม่พบข้อมูลผู้รับเลี้ยง');
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+
+      // ดึง sitterId จากการจอง
+      final bookingData = bookingsQuery.docs.first.data();
+      if (bookingData.containsKey('sitterId')) {
+        setState(() {
+          widget.sitterId = bookingData['sitterId'];
+          if (_currentItemId == null) {
+            _currentItemId = bookingsQuery.docs.first.id;
+          }
+          _hasFoundSitter = true;
+        });
+        await _loadSitterData();
+      } else {
+        _showErrorSnackBar('ไม่พบข้อมูลผู้รับเลี้ยง');
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('Error loading matched sitter: $e');
+      _showErrorSnackBar('เกิดข้อผิดพลาดในการโหลดข้อมูลผู้รับเลี้ยง: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ปรับปรุงฟังก์ชันโหลดข้อมูลผู้รับเลี้ยง
   Future<void> _loadSitterData() async {
     try {
+      // ตรวจสอบว่ามี sitterId หรือไม่
+      if (widget.sitterId == null || widget.sitterId!.isEmpty) {
+        setState(() {
+          sitterName = 'ไม่พบข้อมูลผู้รับเลี้ยง';
+          _isLoading = false;
+        });
+        return;
+      }
+
       final sitterDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.sitterId)
@@ -110,11 +196,22 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
       if (sitterDoc.exists) {
         setState(() {
-          sitterName = sitterDoc.data()?['name'] ?? 'Unknown';
+          sitterName = sitterDoc.data()?['name'] ?? 'ไม่ระบุชื่อ';
+          _isLoading = false;
+          _hasFoundSitter = true;
+        });
+      } else {
+        setState(() {
+          sitterName = 'ไม่พบข้อมูลผู้รับเลี้ยง';
+          _isLoading = false;
         });
       }
     } catch (e) {
       print('Error loading sitter data: $e');
+      setState(() {
+        sitterName = 'เกิดข้อผิดพลาดในการโหลดข้อมูล';
+        _isLoading = false;
+      });
     }
   }
 
@@ -145,17 +242,19 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
+  // ปรับปรุงฟังก์ชันโหลดรีวิวเริ่มต้น
   Future<void> _loadInitialReviews() async {
     setState(() => _isLoading = true);
     try {
-      // ดึง ID ของ user ปัจจุบัน
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      // ตรวจสอบว่ามี sitterId หรือไม่
+      if (widget.sitterId == null || widget.sitterId!.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .where('sitterId', isEqualTo: widget.sitterId)
-          .where('userId', isEqualTo: currentUser.uid) // เพิ่มเงื่อนไขนี้
           .orderBy('timestamp', descending: true)
           .limit(ReviewConstants.pageSize)
           .get();
@@ -168,18 +267,16 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
+  // ปรับปรุงฟังก์ชันโหลดรีวิวเพิ่มเติม
   Future<void> _loadMoreReviews() async {
     if (_isLoading || _lastDocument == null) return;
+    if (widget.sitterId == null || widget.sitterId!.isEmpty) return;
 
     setState(() => _isLoading = true);
     try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
-
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .where('sitterId', isEqualTo: widget.sitterId)
-          .where('userId', isEqualTo: currentUser.uid) // เพิ่มเงื่อนไขนี้
           .orderBy('timestamp', descending: true)
           .startAfterDocument(_lastDocument!)
           .limit(ReviewConstants.pageSize)
@@ -205,15 +302,17 @@ class _ReviewsPageState extends State<ReviewsPage> {
     });
   }
 
+  // ปรับปรุงฟังก์ชันคำนวณคะแนนเฉลี่ย
   Future<void> _calculateAverageRating() async {
     try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      if (widget.sitterId == null || widget.sitterId!.isEmpty) {
+        setState(() => _averageRating = 0);
+        return;
+      }
 
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .where('sitterId', isEqualTo: widget.sitterId)
-          .where('userId', isEqualTo: currentUser.uid) // เพิ่มเงื่อนไขนี้
           .get();
 
       if (snapshot.docs.isEmpty) {
@@ -233,39 +332,91 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
+  // ปรับปรุงฟังก์ชันเพิ่มรีวิว
   Future<void> _addReview() async {
     if (!_validateReview()) return;
 
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        _showErrorSnackBar('Please login to add a review');
+        _showErrorSnackBar('กรุณาเข้าสู่ระบบเพื่อเขียนรีวิว');
+        return;
+      }
+
+      if (widget.sitterId == null || widget.sitterId!.isEmpty) {
+        _showErrorSnackBar('ไม่พบข้อมูลผู้รับเลี้ยง');
         return;
       }
 
       setState(() => _isLoading = true);
 
-      final newReview = Review(
-        id: '',
-        userId: currentUser.uid,
-        rating: _rating,
-        comment: _commentController.text.trim(),
-        timestamp: DateTime.now(),
-      );
+      // ดึงข้อมูลผู้ใช้
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
 
-      await FirebaseFirestore.instance
-          .collection(ReviewConstants.collectionName)
-          .add({
-        ...newReview.toMap(),
-        'itemId': widget.itemId,
+      if (!userDoc.exists) {
+        throw Exception('ไม่พบข้อมูลผู้ใช้');
+      }
+
+      final userData = userDoc.data() as Map<String, dynamic>;
+      final userName = userData['name'] ?? 'ผู้ใช้งาน';
+      final userPhoto = userData['photo'] ?? '';
+
+      final newReview = {
+        'userId': currentUser.uid,
+        'userName': userName,
+        'userPhoto': userPhoto,
         'sitterId': widget.sitterId,
-      });
+        'rating': _rating,
+        'comment': _commentController.text.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+
+      if (_currentItemId != null && _currentItemId!.isNotEmpty) {
+        newReview['bookingId'] = _currentItemId;
+      }
+
+      // เพิ่มรีวิวในคอลเลคชัน reviews
+      final docRef = await FirebaseFirestore.instance
+          .collection(ReviewConstants.collectionName)
+          .add(newReview);
+
+      // อัพเดตสถานะของการจอง
+      if (_currentItemId != null && _currentItemId!.isNotEmpty) {
+        // ตรวจสอบว่าอยู่ในคอลเลกชัน bookings หรือ booking_requests
+        final bookingDoc = await FirebaseFirestore.instance
+            .collection('bookings')
+            .doc(_currentItemId)
+            .get();
+
+        if (bookingDoc.exists) {
+          await FirebaseFirestore.instance
+              .collection('bookings')
+              .doc(_currentItemId)
+              .update({'reviewed': true});
+        } else {
+          // ตรวจสอบใน booking_requests
+          final requestDoc = await FirebaseFirestore.instance
+              .collection('booking_requests')
+              .doc(_currentItemId)
+              .get();
+
+          if (requestDoc.exists) {
+            await FirebaseFirestore.instance
+                .collection('booking_requests')
+                .doc(_currentItemId)
+                .update({'reviewed': true});
+          }
+        }
+      }
 
       _resetForm();
       await _initializeData();
-      _showSuccessSnackBar('Review added successfully');
+      _showSuccessSnackBar('เพิ่มรีวิวเรียบร้อยแล้ว');
     } catch (e) {
-      _showErrorSnackBar('Error adding review: $e');
+      _showErrorSnackBar('เกิดข้อผิดพลาดในการเพิ่มรีวิว: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -273,18 +424,18 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
   bool _validateReview() {
     if (_rating < ReviewConstants.minRating) {
-      _showErrorSnackBar('Please provide a rating');
+      _showErrorSnackBar('กรุณาให้คะแนน');
       return false;
     }
 
     final comment = _commentController.text.trim();
     if (comment.isEmpty) {
-      _showErrorSnackBar('Please write a comment');
+      _showErrorSnackBar('กรุณาเขียนความคิดเห็น');
       return false;
     }
 
     if (comment.length > ReviewConstants.maxCommentLength) {
-      _showErrorSnackBar('Comment is too long');
+      _showErrorSnackBar('ความคิดเห็นยาวเกินไป');
       return false;
     }
 
@@ -335,10 +486,10 @@ class _ReviewsPageState extends State<ReviewsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Reviews',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          'รีวิวบริการ',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        backgroundColor: Colors.teal,
+        backgroundColor: Colors.orange,
         elevation: 0,
       ),
       body: RefreshIndicator(
@@ -348,7 +499,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.teal.shade50, Colors.white],
+              colors: [Colors.orange.shade50, Colors.white],
             ),
           ),
           child: Column(
@@ -356,11 +507,13 @@ class _ReviewsPageState extends State<ReviewsPage> {
               _buildSitterInfo(),
               _buildAverageRatingCard(),
               Expanded(
-                child: _reviews.isEmpty && !_isLoading
-                    ? _buildEmptyReviewsWidget()
-                    : _buildReviewsList(),
+                child: !_hasFoundSitter
+                    ? _buildNoSitterFoundWidget()
+                    : (_reviews.isEmpty && !_isLoading
+                        ? _buildEmptyReviewsWidget()
+                        : _buildReviewsList()),
               ),
-              _buildAddReviewForm(),
+              if (_hasFoundSitter) _buildAddReviewForm(),
             ],
           ),
         ),
@@ -368,9 +521,58 @@ class _ReviewsPageState extends State<ReviewsPage> {
     );
   }
 
+  Widget _buildNoSitterFoundWidget() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          SizedBox(height: 16),
+          Text(
+            'ไม่พบข้อมูลผู้รับเลี้ยงแมว',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[600],
+            ),
+          ),
+          SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: Text(
+              'กรุณาเลือกผู้รับเลี้ยงแมวจากหน้าประวัติการฝากเลี้ยง',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[500],
+              ),
+            ),
+          ),
+          SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.arrow_back),
+            label: Text('กลับไปหน้าก่อนหน้า'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSitterInfo() {
     return Card(
       margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      elevation: 4,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -380,8 +582,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundColor: Colors.teal.shade100,
-                  child: const Icon(Icons.person, size: 30, color: Colors.teal),
+                  backgroundColor: Colors.orange.shade100,
+                  child:
+                      const Icon(Icons.person, size: 30, color: Colors.orange),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -391,36 +594,20 @@ class _ReviewsPageState extends State<ReviewsPage> {
                       Text(
                         sitterName,
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Cat Sitter',
+                        'ผู้รับเลี้ยงแมว',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 14,
                         ),
                       ),
-                      // แสดง sitterId สำหรับการดีบัก
-                      Text(
-                        'SitterId: ${widget.sitterId}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[400],
-                        ),
-                      ),
                     ],
                   ),
-                ),
-                // เพิ่มปุ่มรีเฟรช
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () {
-                    _loadSitterData();
-                    _initializeData();
-                  },
                 ),
               ],
             ),
@@ -431,7 +618,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
   }
 
   Widget _buildEmptyReviewsWidget() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -442,7 +629,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
           ),
           SizedBox(height: 16),
           Text(
-            'No reviews yet\nBe the first to review!',
+            'ยังไม่มีรีวิว\nเป็นคนแรกที่รีวิวผู้รับเลี้ยงคนนี้!',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 18,
@@ -456,21 +643,21 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
   Widget _buildAverageRatingCard() {
     return Card(
-      margin: const EdgeInsets.all(16),
-      elevation: 8,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             const Text(
-              'Average Rating',
+              'คะแนนเฉลี่ย',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.teal,
+                color: Colors.orange,
               ),
             ),
             const SizedBox(height: 8),
@@ -482,7 +669,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
                   style: const TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
-                    color: Colors.teal,
+                    color: Colors.orange,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -494,7 +681,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
               ],
             ),
             Text(
-              '(${_reviews.length} reviews)',
+              '(${_reviews.length} รีวิว)',
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
@@ -516,7 +703,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+              ),
             ),
           );
         }
@@ -530,9 +719,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
   Widget _buildReviewCard(Review review) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 4,
+      elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -542,10 +731,10 @@ class _ReviewsPageState extends State<ReviewsPage> {
             Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: Colors.teal.shade100,
+                  backgroundColor: Colors.orange.shade100,
                   child: const Icon(
                     Icons.person,
-                    color: Colors.teal,
+                    color: Colors.orange,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -554,7 +743,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'User ${review.userId.substring(0, 5)}...',
+                        'ผู้ใช้ ${review.userId.substring(0, 5)}...',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                         ),
@@ -585,7 +774,8 @@ class _ReviewsPageState extends State<ReviewsPage> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
               ),
               child: Text(
                 review.comment,
@@ -619,11 +809,11 @@ class _ReviewsPageState extends State<ReviewsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Write a Review',
+            'เขียนรีวิว',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.teal,
+              color: Colors.orange,
             ),
           ),
           const SizedBox(height: 8),
@@ -648,14 +838,14 @@ class _ReviewsPageState extends State<ReviewsPage> {
           TextField(
             controller: _commentController,
             decoration: InputDecoration(
-              hintText: 'Share your experience...',
+              hintText: 'แชร์ประสบการณ์ของคุณ...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade300),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.teal),
+                borderSide: BorderSide(color: Colors.orange, width: 2),
               ),
               counterText:
                   '${_commentController.text.length}/${ReviewConstants.maxCommentLength}',
@@ -670,7 +860,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _addReview,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
+                backgroundColor: Colors.orange,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -686,7 +876,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
                       ),
                     )
                   : const Text(
-                      'Submit Review',
+                      'ส่งรีวิว',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -705,11 +895,11 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
-        return '${difference.inMinutes}m ago';
+        return '${difference.inMinutes} นาทีที่แล้ว';
       }
-      return '${difference.inHours}h ago';
+      return '${difference.inHours} ชั่วโมงที่แล้ว';
     } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
+      return '${difference.inDays} วันที่แล้ว';
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
