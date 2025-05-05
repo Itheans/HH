@@ -8,6 +8,7 @@ import 'package:geocoding/geocoding.dart';
 import 'dart:math';
 
 import 'package:myproject/pages.dart/sitterscreen/SitterProfileScreen.dart';
+import 'package:myproject/services/shared_pref.dart';
 
 class SelectTargetDateScreen extends StatefulWidget {
   final Function(List<DateTime>) onDateSelected;
@@ -455,11 +456,13 @@ class SitterService {
 class SearchSittersScreen extends StatefulWidget {
   final List<DateTime> targetDates;
   final List<String> catIds;
+  final String? bookingRef; // เพิ่ม parameter นี้
 
   const SearchSittersScreen({
     Key? key,
     required this.targetDates,
     required this.catIds,
+    this.bookingRef, // เพิ่ม optional parameter
   }) : super(key: key);
 
   @override
@@ -557,6 +560,64 @@ class _SearchSittersScreenState extends State<SearchSittersScreen> {
       return 'วันที่ ${_dateFormatter.format(widget.targetDates.first)}';
     } else {
       return '${_dateFormatter.format(widget.targetDates.first)} - ${_dateFormatter.format(widget.targetDates.last)}';
+    }
+  }
+
+  Future<void> _proceedToSitterSearch() async {
+    if (widget.catIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one cat')),
+      );
+      return;
+    }
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // เก็บ ID ของแมวทั้งหมดที่ถูกเลือก
+      final List<String> catIds = widget.catIds;
+
+      // ตรวจสอบว่ามีผู้รับเลี้ยงที่ว่างหรือไม่
+      final availableSitters = await _sitterService.findNearestSitters(
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        dates: widget.targetDates,
+      );
+
+      if (availableSitters.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ไม่พบผู้รับเลี้ยงที่ว่างในระยะ 5 กม.')),
+        );
+        return;
+      }
+
+      // Create a booking request document
+      final bookingRequest = {
+        'userId': user.uid,
+        'catIds': catIds,
+        'dates':
+            widget.targetDates.map((date) => Timestamp.fromDate(date)).toList(),
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+        // ตรวจสอบให้แน่ใจว่ามีการบันทึก sitterId เมื่อสร้างการจอง
+        'sitterId': availableSitters.first['id'], // เลือกผู้รับเลี้ยงคนแรกที่พบ
+      };
+
+      // หากผู้ใช้ยังไม่ได้เลือกผู้รับเลี้ยง จะนำทางไปหน้า SearchSittersScreen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SearchSittersScreen(
+            targetDates: widget.targetDates,
+            catIds: widget.catIds,
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     }
   }
 
@@ -676,13 +737,16 @@ class _SearchSittersScreenState extends State<SearchSittersScreen> {
                             ),
                             child: InkWell(
                               onTap: () {
+                                // พิมพ์ค่า ID ของผู้รับเลี้ยงที่เลือก
+                                print('Selected Sitter ID: ${sitter['id']}');
+
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => SitterProfileScreen(
                                       sitterId: sitter['id'],
                                       targetDates: widget.targetDates,
-                                      catIds: widget.catIds, // Add this line
+                                      catIds: widget.catIds,
                                     ),
                                   ),
                                 );

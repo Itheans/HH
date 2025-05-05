@@ -74,10 +74,16 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
       // เก็บ ID ของแมวทั้งหมดที่ถูกเลือก
       final List<String> catIds = selectedCats.map((cat) => cat.id).toList();
 
-      // Create a booking request document
+      // แสดงข้อความ loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('กำลังตรวจสอบข้อมูล...')),
+      );
+
+      // Create a booking request document - ยังไม่มีการกำหนด sitterId ณ ตอนนี้
+      // จะกำหนดเมื่อเลือกผู้รับเลี้ยงในหน้าถัดไป
       final bookingRequest = {
         'userId': user.uid,
-        'catIds': catIds, // เพิ่ม/แก้ไขส่วนนี้ให้เก็บ ID ของแมวที่เลือก
+        'catIds': catIds,
         'dates':
             widget.targetDates.map((date) => Timestamp.fromDate(date)).toList(),
         'status': 'pending',
@@ -99,14 +105,17 @@ class _SelectCatsForSittingPageState extends State<SelectCatsForSittingPage> {
             .update({'isForSitting': true});
       }
 
-      // Navigate to sitter search
+      // ขั้นตอนถัดไป ไปยังหน้าค้นหาผู้รับเลี้ยง
       if (!mounted) return;
+
+      // ส่งต่อ booking reference เพื่อจะได้อัพเดต sitterId ในภายหลัง
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => SearchSittersScreen(
             targetDates: widget.targetDates,
-            catIds: selectedCats.map((cat) => cat.id).toList(), // Add this line
+            catIds: selectedCats.map((cat) => cat.id).toList(),
+            bookingRef: bookingRef.id, // เพิ่มค่านี้เพื่อส่งต่อให้หน้าถัดไป
           ),
         ),
       );
