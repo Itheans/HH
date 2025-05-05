@@ -246,7 +246,7 @@ class MyApp extends StatelessWidget {
 
       print('Database repair completed');
     } catch (e) {
-      print('Error fixing co=rrupted sitterIds: $e');
+      print('Error fixing corrupted sitterIds: $e');
     }
   }
 
