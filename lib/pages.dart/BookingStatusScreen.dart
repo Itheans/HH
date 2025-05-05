@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:myproject/pages.dart/reviwe.dart';
 
 class BookingStatusScreen extends StatefulWidget {
   @override
@@ -189,6 +190,33 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
                         ),
                       ],
                     ),
+                    SizedBox(height: 16),
+                    if (bookingData['status'] == 'completed' &&
+                        !(bookingData['reviewed'] ?? false))
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ReviewsPage(
+                                  itemId: _bookingsList[index].id,
+                                  sitterId: sitterId,
+                                ),
+                              ),
+                            ).then((_) {
+                              // Refresh the bookings list when returning from review page
+                              setState(() {});
+                            });
+                          },
+                          icon: Icon(Icons.rate_review, color: Colors.orange),
+                          label: Text(
+                            'เขียนรีวิว',
+                            style: TextStyle(color: Colors.orange),
+                          ),
+                        ),
+                      ),
                     SizedBox(height: 16),
                     if (bookingData['dates'] != null)
                       Text(

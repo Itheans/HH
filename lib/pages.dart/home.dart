@@ -537,20 +537,97 @@ class _MyWidgetState extends State<Home> {
                 MaterialPageRoute(builder: (context) => const CatHistoryPage()),
               );
             }, 'แมวของคุณ'),
-            _buildActionItem('images/paw.png', paw, () {
+            // ในไฟล์ lib/pages.dart/home.dart
+// ปรับปรุงโค้ดในส่วนที่เรียกใช้หน้ารีวิว
+
+            _buildActionItem('images/paw.png', paw, () async {
               setState(() {
                 paw = true;
                 cat = backpack = ball = false;
               });
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ReviewsPage(
-                    itemId: 'booking_id',
-                    sitterId: '/ sitters_id',
-                  ),
-                ),
+
+              // แสดง loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (BuildContext context) {
+                  return Dialog(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          CircularProgressIndicator(),
+                          SizedBox(width: 16),
+                          Text("กำลังโหลดข้อมูล...")
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
+
+              try {
+                // ตรวจสอบการจองล่าสุดก่อนเปิดหน้ารีวิว
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  final bookings = await FirebaseFirestore.instance
+                      .collection('bookings')
+                      .where('userId', isEqualTo: user.uid)
+                      .where('status', isEqualTo: 'completed')
+                      .orderBy('createdAt', descending: true)
+                      .limit(1)
+                      .get();
+
+                  // ปิด loading dialog
+                  Navigator.pop(context);
+
+                  if (bookings.docs.isNotEmpty) {
+                    final sitterId = bookings.docs.first.data()['sitterId'];
+                    if (sitterId != null && sitterId.toString().isNotEmpty) {
+                      // มีการจองและมี sitterId
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ReviewsPage(
+                            itemId: bookings.docs.first.id,
+                            sitterId: sitterId,
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                  }
+
+                  // ถ้าไม่พบข้อมูลการจองที่สมบูรณ์ เปิดหน้ารีวิวแบบไม่มีพารามิเตอร์
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ReviewsPage(),
+                    ),
+                  );
+                } else {
+                  // ปิด loading dialog
+                  Navigator.pop(context);
+
+                  // ถ้ายังไม่ได้ login
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('กรุณาเข้าสู่ระบบก่อนใช้งาน')),
+                  );
+                }
+              } catch (e) {
+                // ปิด loading dialog
+                Navigator.pop(context);
+
+                print('Error checking bookings: $e');
+                // เปิดหน้ารีวิวแบบไม่มีพารามิเตอร์เมื่อเกิดข้อผิดพลาด
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ReviewsPage(),
+                  ),
+                );
+              }
             }, 'รีวิว'),
             _buildActionItem('images/backpack.png', backpack, () {
               setState(() {

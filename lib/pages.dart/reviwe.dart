@@ -20,13 +20,34 @@ class Review {
   });
 
   factory Review.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+
+    if (data.isEmpty) {
+      return Review(
+        id: doc.id,
+        userId: '',
+        rating: 0.0,
+        comment: 'ไม่มีข้อมูล',
+        timestamp: DateTime.now(),
+      );
+    }
+
+    DateTime timestamp = DateTime.now();
+    try {
+      if (data['timestamp'] is Timestamp) {
+        timestamp = (data['timestamp'] as Timestamp).toDate();
+      }
+    } catch (e) {
+      print('Error parsing timestamp: $e');
+    }
+
     return Review(
       id: doc.id,
       userId: data['userId'] ?? '',
-      rating: (data['rating'] as num).toDouble(),
+      rating:
+          (data['rating'] is num) ? (data['rating'] as num).toDouble() : 0.0,
       comment: data['comment'] ?? '',
-      timestamp: (data['timestamp'] as Timestamp).toDate(),
+      timestamp: timestamp,
     );
   }
 
@@ -48,8 +69,8 @@ class ReviewConstants {
 }
 
 class ReviewsPage extends StatefulWidget {
-  final String? itemId; // Keep this final
-  String? sitterId; // This can stay mutable if needed
+  final String? itemId;
+  String? sitterId;
 
   ReviewsPage({
     Key? key,
@@ -70,22 +91,22 @@ class _ReviewsPageState extends State<ReviewsPage> {
   List<Review> _reviews = [];
   double _averageRating = 0;
   String sitterName = '';
+  String sitterPhoto = '';
   bool _hasFoundSitter = false;
-  String? _currentItemId; // Add this state variable
+  String? _currentItemId;
+  bool _loadingReviews = false;
 
   @override
   void initState() {
     super.initState();
-    _currentItemId = widget.itemId; // Initialize with widget value
+    _currentItemId = widget.itemId;
 
-    // ถ้ามีการระบุ sitterId มาแล้ว ให้ใช้ค่าที่ระบุมา
     if (widget.sitterId != null && widget.sitterId!.isNotEmpty) {
       _loadSitterData().then((_) {
         _initializeData();
         _setupScrollListener();
       });
     } else {
-      // ถ้าไม่มีการระบุ sitterId ให้หาจากการจับคู่ล่าสุด
       _loadMatchedSitter().then((_) {
         if (_hasFoundSitter) {
           _initializeData();
@@ -95,7 +116,43 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
-  // เพิ่มฟังก์ชันสำหรับดึงข้อมูลผู้รับเลี้ยงจากการจับคู่ล่าสุด
+  Future<void> _loadReviews() async {
+    try {
+      setState(() => _loadingReviews = true);
+
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection(ReviewConstants.collectionName)
+          .where('sitterId', isEqualTo: widget.sitterId)
+          .get();
+
+      final reviews = snapshot.docs
+          .map((doc) => Review.fromFirestore(doc))
+          .toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      if (snapshot.docs.isNotEmpty) {
+        final totalRating = snapshot.docs
+            .map((doc) => (doc.get('rating') as num).toDouble())
+            .fold<double>(0, (sum, rating) => sum + rating);
+
+        setState(() {
+          _reviews = reviews;
+          _averageRating = totalRating / snapshot.docs.length;
+          _loadingReviews = false;
+        });
+      } else {
+        setState(() {
+          _reviews = [];
+          _averageRating = 0.0;
+          _loadingReviews = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading reviews: $e');
+      setState(() => _loadingReviews = false);
+    }
+  }
+
   Future<void> _loadMatchedSitter() async {
     try {
       setState(() => _isLoading = true);
@@ -104,64 +161,98 @@ class _ReviewsPageState extends State<ReviewsPage> {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
         _showErrorSnackBar('กรุณาเข้าสู่ระบบก่อนเข้าถึงหน้ารีวิว');
+        setState(() => _isLoading = false);
         return;
       }
 
-      // แก้ไขในไฟล์ lib/pages.dart/reviwe.dart ในฟังก์ชัน _loadMatchedSitter()
-      final bookingsQuery = await FirebaseFirestore.instance
+      // ค้นหาการจองทั้งหมดของผู้ใช้ (ไม่เรียงลำดับหรือมีเงื่อนไขซับซ้อน)
+      final bookingsSnapshot = await FirebaseFirestore.instance
           .collection('bookings')
           .where('userId', isEqualTo: currentUser.uid)
-          .where('status',
-              whereIn: ['completed', 'in_progress']) // เพิ่มสถานะอื่นๆ
-          .orderBy('createdAt', descending: true)
-          .limit(1)
           .get();
 
-      // ถ้าไม่พบการจองที่เสร็จสมบูรณ์ในคอลเลคชัน bookings ให้ตรวจสอบใน booking_requests
-      if (bookingsQuery.docs.isEmpty) {
-        // และแก้ไขส่วนที่ค้นหาใน booking_requests ด้วย
-        final requestsQuery = await FirebaseFirestore.instance
-            .collection('booking_requests')
-            .where('userId', isEqualTo: currentUser.uid)
-            .where('status',
-                whereIn: ['completed', 'in_progress']) // เพิ่มสถานะอื่นๆ
-            .orderBy('createdAt', descending: true)
-            .limit(1)
-            .get();
+      // จัดเรียงข้อมูลหลังจากได้รับมาแล้ว
+      final completedBookings = bookingsSnapshot.docs
+          .where((doc) =>
+              (doc.data() as Map<String, dynamic>)['status'] == 'completed')
+          .toList();
 
-        // ในฟังก์ชัน _loadMatchedSitter() เพิ่มการแสดงข้อความเมื่อไม่พบการจอง
-        if (bookingsQuery.docs.isEmpty && requestsQuery.docs.isEmpty) {
-          _showErrorSnackBar(
-              'ไม่พบการฝากเลี้ยงที่เสร็จสมบูรณ์ กรุณาตรวจสอบว่ามีการฝากเลี้ยงที่เสร็จสิ้นแล้วหรือไม่');
-          setState(() => _isLoading = false);
-          return;
-        }
+      completedBookings.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
 
-        // ดึง sitterId จากการจอง
-        final requestData = requestsQuery.docs.first.data();
-        if (requestData.containsKey('sitterId')) {
+        final aTime = aData['createdAt'] as Timestamp?;
+        final bTime = bData['createdAt'] as Timestamp?;
+
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        return bTime.compareTo(aTime); // เรียงจากใหม่ไปเก่า
+      });
+
+      // หากพบการจองที่เสร็จสิ้น
+      if (completedBookings.isNotEmpty) {
+        final bookingData =
+            completedBookings.first.data() as Map<String, dynamic>;
+        if (bookingData.containsKey('sitterId') &&
+            bookingData['sitterId'] != null &&
+            bookingData['sitterId'].toString().isNotEmpty) {
           setState(() {
-            widget.sitterId = requestData['sitterId'];
+            widget.sitterId = bookingData['sitterId'];
             if (_currentItemId == null) {
-              _currentItemId = requestsQuery.docs.first.id;
+              _currentItemId = completedBookings.first.id;
             }
             _hasFoundSitter = true;
           });
           await _loadSitterData();
-        } else {
-          _showErrorSnackBar('ไม่พบข้อมูลผู้รับเลี้ยง');
-          setState(() => _isLoading = false);
+          return;
         }
+      }
+
+      // ถ้าไม่พบในคอลเลกชัน bookings ให้ตรวจสอบใน booking_requests แบบเดียวกัน
+      final requestsSnapshot = await FirebaseFirestore.instance
+          .collection('booking_requests')
+          .where('userId', isEqualTo: currentUser.uid)
+          .get();
+
+      // ประมวลผลเช่นเดียวกัน...
+      final completedRequests = requestsSnapshot.docs
+          .where((doc) =>
+              (doc.data() as Map<String, dynamic>)['status'] == 'completed')
+          .toList();
+
+      completedRequests.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
+
+        final aTime = aData['createdAt'] as Timestamp?;
+        final bTime = bData['createdAt'] as Timestamp?;
+
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        return bTime.compareTo(aTime);
+      });
+
+      if (completedRequests.isEmpty) {
+        _showErrorSnackBar(
+            'ไม่พบประวัติการฝากเลี้ยง กรุณาใช้บริการฝากเลี้ยงแมวก่อนเขียนรีวิว');
+        setState(() => _isLoading = false);
         return;
       }
 
       // ดึง sitterId จากการจอง
-      final bookingData = bookingsQuery.docs.first.data();
-      if (bookingData.containsKey('sitterId')) {
+      final requestData =
+          completedRequests.first.data() as Map<String, dynamic>;
+      if (requestData.containsKey('sitterId') &&
+          requestData['sitterId'] != null &&
+          requestData['sitterId'].toString().isNotEmpty) {
         setState(() {
-          widget.sitterId = bookingData['sitterId'];
+          widget.sitterId = requestData['sitterId'];
           if (_currentItemId == null) {
-            _currentItemId = bookingsQuery.docs.first.id;
+            _currentItemId = completedRequests.first.id;
           }
           _hasFoundSitter = true;
         });
@@ -177,10 +268,8 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
-  // ปรับปรุงฟังก์ชันโหลดข้อมูลผู้รับเลี้ยง
   Future<void> _loadSitterData() async {
     try {
-      // ตรวจสอบว่ามี sitterId หรือไม่
       if (widget.sitterId == null || widget.sitterId!.isEmpty) {
         setState(() {
           sitterName = 'ไม่พบข้อมูลผู้รับเลี้ยง';
@@ -195,11 +284,22 @@ class _ReviewsPageState extends State<ReviewsPage> {
           .get();
 
       if (sitterDoc.exists) {
-        setState(() {
-          sitterName = sitterDoc.data()?['name'] ?? 'ไม่ระบุชื่อ';
-          _isLoading = false;
-          _hasFoundSitter = true;
-        });
+        final sitterData = sitterDoc.data();
+        if (sitterData != null) {
+          setState(() {
+            sitterName = sitterData['name'] ?? 'ไม่ระบุชื่อ';
+            sitterPhoto = sitterData['photo'] ?? '';
+            _isLoading = false;
+            _hasFoundSitter = true;
+          });
+
+          _initializeData();
+        } else {
+          setState(() {
+            sitterName = 'ข้อมูลผู้รับเลี้ยงไม่สมบูรณ์';
+            _isLoading = false;
+          });
+        }
       } else {
         setState(() {
           sitterName = 'ไม่พบข้อมูลผู้รับเลี้ยง';
@@ -231,6 +331,57 @@ class _ReviewsPageState extends State<ReviewsPage> {
     });
   }
 
+  Future<void> _loadMoreReviews() async {
+    if (_isLoading || _lastDocument == null) return;
+    if (widget.sitterId == null || widget.sitterId!.isEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      // ใช้การค้นหาเรียบง่าย
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection(ReviewConstants.collectionName)
+          .where('sitterId', isEqualTo: widget.sitterId)
+          .get();
+
+      // จัดเรียงและเลือกเฉพาะข้อมูลที่ต้องการ (ที่มาหลัง lastDocument)
+      final allReviews =
+          snapshot.docs.map((doc) => Review.fromFirestore(doc)).toList();
+      allReviews.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      // ค้นหาตำแหน่งของข้อมูลล่าสุดที่โหลดไปแล้ว
+      int lastIndex = -1;
+      for (int i = 0; i < allReviews.length; i++) {
+        if (allReviews[i].id == _lastDocument!.id) {
+          lastIndex = i;
+          break;
+        }
+      }
+
+      if (lastIndex != -1 && lastIndex + 1 < allReviews.length) {
+        // เลือกข้อมูลเพิ่มเติม
+        final nextReviews = allReviews
+            .sublist(lastIndex + 1)
+            .take(ReviewConstants.pageSize)
+            .toList();
+
+        setState(() {
+          _reviews.addAll(nextReviews);
+          if (nextReviews.isNotEmpty) {
+            // หาและเก็บข้อมูล document สุดท้าย
+            final lastReviewId = nextReviews.last.id;
+            _lastDocument =
+                snapshot.docs.firstWhere((doc) => doc.id == lastReviewId);
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading more reviews: $e');
+      _showErrorSnackBar('เกิดข้อผิดพลาดในการโหลดรีวิวเพิ่มเติม: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _initializeData() async {
     try {
       await Future.wait([
@@ -242,50 +393,41 @@ class _ReviewsPageState extends State<ReviewsPage> {
     }
   }
 
-  // ปรับปรุงฟังก์ชันโหลดรีวิวเริ่มต้น
   Future<void> _loadInitialReviews() async {
     setState(() => _isLoading = true);
     try {
       // ตรวจสอบว่ามี sitterId หรือไม่
       if (widget.sitterId == null || widget.sitterId!.isEmpty) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _reviews = [];
+        });
         return;
       }
 
+      // ใช้เพียง where เดียวเพื่อหลีกเลี่ยงปัญหา index
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .where('sitterId', isEqualTo: widget.sitterId)
-          .orderBy('timestamp', descending: true)
-          .limit(ReviewConstants.pageSize)
           .get();
 
-      _processQuerySnapshot(snapshot);
+      // จัดเรียงและจำกัดจำนวนหลังจากได้รับข้อมูลแล้ว
+      final allReviews =
+          snapshot.docs.map((doc) => Review.fromFirestore(doc)).toList();
+      allReviews.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      final limitedReviews = allReviews.take(ReviewConstants.pageSize).toList();
+
+      setState(() {
+        _reviews = limitedReviews;
+        if (snapshot.docs.isNotEmpty) {
+          _lastDocument = snapshot.docs[limitedReviews.length - 1];
+        }
+        _isLoading = false;
+      });
     } catch (e) {
-      _showErrorSnackBar('Error loading reviews');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // ปรับปรุงฟังก์ชันโหลดรีวิวเพิ่มเติม
-  Future<void> _loadMoreReviews() async {
-    if (_isLoading || _lastDocument == null) return;
-    if (widget.sitterId == null || widget.sitterId!.isEmpty) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final QuerySnapshot snapshot = await FirebaseFirestore.instance
-          .collection(ReviewConstants.collectionName)
-          .where('sitterId', isEqualTo: widget.sitterId)
-          .orderBy('timestamp', descending: true)
-          .startAfterDocument(_lastDocument!)
-          .limit(ReviewConstants.pageSize)
-          .get();
-
-      _processQuerySnapshot(snapshot);
-    } catch (e) {
-      _showErrorSnackBar('Error loading more reviews');
-    } finally {
+      print('Error loading reviews: $e');
+      _showErrorSnackBar('เกิดข้อผิดพลาดในการโหลดรีวิว: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -302,7 +444,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
     });
   }
 
-  // ปรับปรุงฟังก์ชันคำนวณคะแนนเฉลี่ย
   Future<void> _calculateAverageRating() async {
     try {
       if (widget.sitterId == null || widget.sitterId!.isEmpty) {
@@ -310,6 +451,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
         return;
       }
 
+      // ใช้การค้นหาอย่างง่าย
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .where('sitterId', isEqualTo: widget.sitterId)
@@ -320,19 +462,31 @@ class _ReviewsPageState extends State<ReviewsPage> {
         return;
       }
 
-      final totalRating = snapshot.docs
-          .map((doc) => (doc.get('rating') as num).toDouble())
-          .fold<double>(0, (sum, rating) => sum + rating);
+      double totalRating = 0;
+      int validRatings = 0;
+
+      // คำนวณคะแนนเฉลี่ยด้วยตัวเอง
+      for (var doc in snapshot.docs) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data.containsKey('rating') && data['rating'] is num) {
+            totalRating += (data['rating'] as num).toDouble();
+            validRatings++;
+          }
+        } catch (e) {
+          print('Error processing rating: $e');
+        }
+      }
 
       setState(() {
-        _averageRating = totalRating / snapshot.docs.length;
+        _averageRating = validRatings > 0 ? totalRating / validRatings : 0;
       });
     } catch (e) {
       print('Error calculating average rating: $e');
+      setState(() => _averageRating = 0);
     }
   }
 
-  // ปรับปรุงฟังก์ชันเพิ่มรีวิว
   Future<void> _addReview() async {
     if (!_validateReview()) return;
 
@@ -350,7 +504,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
       setState(() => _isLoading = true);
 
-      // ดึงข้อมูลผู้ใช้
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser.uid)
@@ -378,14 +531,11 @@ class _ReviewsPageState extends State<ReviewsPage> {
         newReview['bookingId'] = _currentItemId;
       }
 
-      // เพิ่มรีวิวในคอลเลคชัน reviews
       final docRef = await FirebaseFirestore.instance
           .collection(ReviewConstants.collectionName)
           .add(newReview);
 
-      // อัพเดตสถานะของการจอง
       if (_currentItemId != null && _currentItemId!.isNotEmpty) {
-        // ตรวจสอบว่าอยู่ในคอลเลกชัน bookings หรือ booking_requests
         final bookingDoc = await FirebaseFirestore.instance
             .collection('bookings')
             .doc(_currentItemId)
@@ -397,7 +547,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
               .doc(_currentItemId)
               .update({'reviewed': true});
         } else {
-          // ตรวจสอบใน booking_requests
           final requestDoc = await FirebaseFirestore.instance
               .collection('booking_requests')
               .doc(_currentItemId)
@@ -502,20 +651,47 @@ class _ReviewsPageState extends State<ReviewsPage> {
               colors: [Colors.orange.shade50, Colors.white],
             ),
           ),
-          child: Column(
-            children: [
-              _buildSitterInfo(),
-              _buildAverageRatingCard(),
-              Expanded(
-                child: !_hasFoundSitter
-                    ? _buildNoSitterFoundWidget()
-                    : (_reviews.isEmpty && !_isLoading
-                        ? _buildEmptyReviewsWidget()
-                        : _buildReviewsList()),
-              ),
-              if (_hasFoundSitter) _buildAddReviewForm(),
-            ],
-          ),
+          child: _isLoading
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.orange),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'กำลังโหลดข้อมูล...',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : !_hasFoundSitter
+                  ? _buildNoSitterFoundWidget()
+                  : ListView(
+                      children: [
+                        _buildSitterInfo(),
+                        _buildAverageRatingCard(),
+                        _loadingReviews
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            : (_reviews.isEmpty
+                                ? _buildEmptyReviewsWidget()
+                                : Column(
+                                    children: _reviews
+                                        .map((review) =>
+                                            _buildReviewCard(review))
+                                        .toList(),
+                                  )),
+                        if (_hasFoundSitter) _buildAddReviewForm(),
+                      ],
+                    ),
         ),
       ),
     );
@@ -575,44 +751,56 @@ class _ReviewsPageState extends State<ReviewsPage> {
       elevation: 4,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.orange.shade100,
-                  child:
-                      const Icon(Icons.person, size: 30, color: Colors.orange),
+        child: widget.sitterId == null || widget.sitterId!.isEmpty
+            ? Center(
+                child: Text(
+                  'ไม่พบข้อมูลผู้รับเลี้ยง',
+                  style: TextStyle(color: Colors.grey),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        sitterName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.orange.shade100,
+                        backgroundImage: sitterPhoto.isNotEmpty
+                            ? NetworkImage(sitterPhoto)
+                            : null,
+                        child: sitterPhoto.isEmpty
+                            ? const Icon(Icons.person,
+                                size: 30, color: Colors.orange)
+                            : null,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'ผู้รับเลี้ยงแมว',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sitterName.isEmpty ? 'ไม่ระบุชื่อ' : sitterName,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'ผู้รับเลี้ยงแมว',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -665,7 +853,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _averageRating.toStringAsFixed(1),
+                  _averageRating.isNaN
+                      ? '0.0'
+                      : _averageRating.toStringAsFixed(1),
                   style: const TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
