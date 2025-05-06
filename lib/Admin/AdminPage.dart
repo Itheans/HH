@@ -687,40 +687,186 @@ class _AdminPanelState extends State<AdminPanel> {
             }
 
             return ListView.builder(
-                itemCount: snapshot.data!.docs.length,
-                padding: EdgeInsets.all(16),
-                itemBuilder: (context, index) {
-                  final doc = snapshot.data!.docs[index];
-                  final bookingData = doc.data() as Map<String, dynamic>;
-                  final status = bookingData['status'] ?? 'pending';
+              itemCount: snapshot.data!.docs.length,
+              padding: EdgeInsets.all(16),
+              itemBuilder: (context, index) {
+                final doc = snapshot.data!.docs[index];
+                final bookingData = doc.data() as Map<String, dynamic>;
+                final status = bookingData['status'] ?? 'pending';
 
-                  return Card(
-                    margin: EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      title: Text('การจองรหัส: ${doc.id.substring(0, 8)}...'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('สถานะ: $_getStatusText(status)'),
-                          if (bookingData['totalPrice'] != null)
-                            Text('ราคา: ฿${bookingData['totalPrice']}'),
-                        ],
-                      ),
-                      trailing: Container(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(status).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+                return Card(
+                  margin: EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'รหัสการจอง: ${doc.id.substring(0, 8)}...',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _getStatusColor(status)
+                                              .withOpacity(0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          _getStatusText(status),
+                                          style: TextStyle(
+                                            color: _getStatusColor(status),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(width: 8),
+                                      if (bookingData['totalPrice'] != null)
+                                        Text(
+                                          '฿${bookingData['totalPrice']}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Colors.green.shade700,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (status == 'pending')
+                              TextButton(
+                                onPressed: () {
+                                  _updateBookingStatus(doc.id, 'confirmed');
+                                },
+                                child: Text(
+                                  'ยืนยัน',
+                                  style: TextStyle(color: Colors.green),
+                                ),
+                              ),
+                          ],
                         ),
-                        child: Text(
-                          _getStatusText(status),
-                          style: TextStyle(color: _getStatusColor(status)),
-                        ),
-                      ),
+                        Divider(),
+
+                        // ข้อมูลผู้จองและพี่เลี้ยง
+                        if (bookingData['userId'] != null)
+                          FutureBuilder<DocumentSnapshot>(
+                            future: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(bookingData['userId'])
+                                .get(),
+                            builder: (context, userSnapshot) {
+                              String userName = 'กำลังโหลด...';
+                              if (userSnapshot.hasData &&
+                                  userSnapshot.data!.exists) {
+                                final userData = userSnapshot.data!.data()
+                                    as Map<String, dynamic>;
+                                userName = userData['name'] ?? 'ไม่ระบุชื่อ';
+                              }
+
+                              return Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.person,
+                                          size: 16, color: Colors.blue),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'ผู้จอง: ',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(userName),
+                                    ],
+                                  ),
+                                  SizedBox(height: 4),
+                                ],
+                              );
+                            },
+                          ),
+
+                        if (bookingData['sitterId'] != null)
+                          FutureBuilder<DocumentSnapshot>(
+                            future: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(bookingData['sitterId'])
+                                .get(),
+                            builder: (context, sitterSnapshot) {
+                              String sitterName = 'กำลังโหลด...';
+                              if (sitterSnapshot.hasData) {
+                                if (sitterSnapshot.data!.exists) {
+                                  final sitterData = sitterSnapshot.data!.data()
+                                      as Map<String, dynamic>;
+                                  sitterName =
+                                      sitterData['name'] ?? 'ไม่ระบุชื่อ';
+                                } else {
+                                  sitterName = 'ไม่พบข้อมูลผู้รับเลี้ยง';
+                                }
+                              }
+
+                              return Row(
+                                children: [
+                                  Icon(Icons.pets,
+                                      size: 16, color: Colors.orange),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'ผู้รับเลี้ยง: ',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(sitterName),
+                                ],
+                              );
+                            },
+                          ),
+
+                        if (bookingData['dates'] != null &&
+                            bookingData['dates'] is List)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Row(
+                              children: [
+                                Icon(Icons.date_range,
+                                    size: 16, color: Colors.green),
+                                SizedBox(width: 4),
+                                Text(
+                                  'วันที่: ',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(_formatDates(bookingData['dates'])),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
-                  );
-                });
+                  ),
+                );
+              },
+            );
           }),
     );
   }
