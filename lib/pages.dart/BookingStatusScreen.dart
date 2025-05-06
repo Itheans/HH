@@ -126,7 +126,7 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
             print(
                 'Sitter snapshot: exists=${sitterSnapshot.hasData ? sitterSnapshot.data!.exists : false}');
 
-            if (!sitterSnapshot.hasData) {
+            if (sitterId == null || sitterId.toString().isEmpty) {
               return Card(
                 margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 child: ListTile(
@@ -151,38 +151,23 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(25),
-                          child: sitterData['photo'] != null &&
-                                  sitterData['photo'].toString().isNotEmpty
-                              ? Image.network(
-                                  sitterData['photo'],
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Icon(Icons.person, size: 50),
-                                )
-                              : Icon(Icons.person, size: 50),
-                        ),
+                        Icon(Icons.error_outline, color: Colors.red, size: 50),
                         SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                sitterData['name'] ?? 'ไม่ระบุชื่อ',
+                                'ข้อมูลไม่สมบูรณ์',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               Text(
-                                _getStatusText(
-                                    bookingData['status'] ?? 'pending'),
+                                'ไม่พบข้อมูลผู้รับเลี้ยง',
                                 style: TextStyle(
-                                  color: _getStatusColor(
-                                      bookingData['status'] ?? 'pending'),
+                                  color: Colors.red,
                                 ),
                               ),
                             ],
@@ -190,33 +175,7 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 16),
-                    if (bookingData['status'] == 'completed' &&
-                        !(bookingData['reviewed'] ?? false))
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ReviewsPage(
-                                  itemId: _bookingsList[index].id,
-                                  sitterId: sitterId,
-                                ),
-                              ),
-                            ).then((_) {
-                              // Refresh the bookings list when returning from review page
-                              setState(() {});
-                            });
-                          },
-                          icon: Icon(Icons.rate_review, color: Colors.orange),
-                          label: Text(
-                            'เขียนรีวิว',
-                            style: TextStyle(color: Colors.orange),
-                          ),
-                        ),
-                      ),
+                    // ส่วนแสดงข้อมูลการจองอื่นๆ
                     SizedBox(height: 16),
                     if (bookingData['dates'] != null)
                       Text(

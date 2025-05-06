@@ -94,8 +94,20 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
 
   Future<void> _loadReviews() async {
     try {
+      setState(() => _loadingReviews = true);
+
+      // ตรวจสอบว่ามี sitterId หรือไม่
+      if (widget.sitterId == null || widget.sitterId.isEmpty) {
+        setState(() {
+          _reviews = [];
+          _averageRating = 0;
+          _loadingReviews = false;
+        });
+        return;
+      }
+
       final QuerySnapshot snapshot = await _firestore
-          .collection(ReviewConstants.collectionName)
+          .collection('reviews')
           .where('sitterId', isEqualTo: widget.sitterId)
           .orderBy('timestamp', descending: true)
           .limit(5)
@@ -106,13 +118,24 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
 
       // Calculate average rating
       if (snapshot.docs.isNotEmpty) {
-        final totalRating = snapshot.docs
-            .map((doc) => (doc.get('rating') as num).toDouble())
-            .fold<double>(0, (sum, rating) => sum + rating);
+        double totalRating = 0;
+        int validRatings = 0;
+
+        for (var doc in snapshot.docs) {
+          try {
+            final data = doc.data() as Map<String, dynamic>;
+            if (data.containsKey('rating') && data['rating'] is num) {
+              totalRating += (data['rating'] as num).toDouble();
+              validRatings++;
+            }
+          } catch (e) {
+            print('Error processing rating: $e');
+          }
+        }
 
         setState(() {
           _reviews = reviews;
-          _averageRating = totalRating / snapshot.docs.length;
+          _averageRating = validRatings > 0 ? totalRating / validRatings : 0;
           _loadingReviews = false;
         });
       } else {
@@ -124,7 +147,11 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
       }
     } catch (e) {
       print('Error loading reviews: $e');
-      setState(() => _loadingReviews = false);
+      setState(() {
+        _reviews = [];
+        _averageRating = 0;
+        _loadingReviews = false;
+      });
     }
   }
 
@@ -385,6 +412,7 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
       // แก้ไขส่วน bottomNavigationBar ใน build() ของ class _SitterProfileScreenState
 // แก้ไขเป็น:
 
+      // แก้ไขปัญหาการตรวจสอบค่า sitterId
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -450,23 +478,14 @@ class _SitterProfileScreenState extends State<SitterProfileScreen> {
                   }
                 }
 
-                // ใช้ยอดเงินที่มาก
                 // ใช้ยอดเงินที่มากกว่าระหว่าง SharedPreferences และ Firestore
-                // เพื่อป้องกันการสูญเสียเงินจากการซิงค์ข้อมูลผิดพลาด
                 double currentWallet = walletFromFirestore > walletFromPrefs
                     ? walletFromFirestore
                     : walletFromPrefs;
 
-                // แสดงข้อมูลสำหรับดีบัก
-                print("ยอดเงินจาก SharedPreferences: $walletFromPrefs");
-                print("ยอดเงินจาก Firestore: $walletFromFirestore");
-                print("ยอดเงินที่ใช้ตรวจสอบ: $currentWallet");
-
                 // คำนวณราคาทั้งหมด
                 double totalPrice = (_sitterData!['pricePerDay'] ?? 50.0) *
                     widget.targetDates.length;
-
-                print("ค่าบริการทั้งหมด: $totalPrice");
 
                 // ตรวจสอบว่ามีเงินเพียงพอหรือไม่
                 if (currentWallet < totalPrice) {

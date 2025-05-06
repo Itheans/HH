@@ -592,7 +592,7 @@ class _SearchSittersScreenState extends State<SearchSittersScreen> {
         return;
       }
 
-      // Create a booking request document
+      // Create a booking request document in Firestore
       final bookingRequest = {
         'userId': user.uid,
         'catIds': catIds,
@@ -600,17 +600,28 @@ class _SearchSittersScreenState extends State<SearchSittersScreen> {
             widget.targetDates.map((date) => Timestamp.fromDate(date)).toList(),
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
-        // ตรวจสอบให้แน่ใจว่ามีการบันทึก sitterId เมื่อสร้างการจอง
         'sitterId': availableSitters.first['id'], // เลือกผู้รับเลี้ยงคนแรกที่พบ
       };
 
-      // หากผู้ใช้ยังไม่ได้เลือกผู้รับเลี้ยง จะนำทางไปหน้า SearchSittersScreen
+      // บันทึกข้อมูลลงใน Firestore
+      DocumentReference bookingRef = await FirebaseFirestore.instance
+          .collection('booking_requests')
+          .add(bookingRequest);
+
+      // แจ้งเตือนผู้ใช้ว่าบันทึกข้อมูลแล้ว
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('บันทึกข้อมูลการจองสำเร็จ กำลังค้นหาผู้รับเลี้ยง')),
+      );
+
+      // เลือกผู้รับเลี้ยงจาก availableSitters ที่ได้ค้นหาไว้แล้ว
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => SearchSittersScreen(
             targetDates: widget.targetDates,
             catIds: widget.catIds,
+            bookingRef: bookingRef.id, // ส่ง ID ของ booking request ไปด้วย
           ),
         ),
       );

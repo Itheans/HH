@@ -391,9 +391,12 @@ class _AdminPanelState extends State<AdminPanel> {
                       ),
                       child: InkWell(
                         onTap: () {
-                          // ไปยังหน้าจัดการผู้ใช้
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('อยู่ระหว่างการพัฒนา')),
+                          // สร้างหน้าจัดการผู้ใช้แบบง่ายๆ
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => _buildUserManagementPage(),
+                            ),
                           );
                         },
                         borderRadius: BorderRadius.circular(12),
@@ -475,9 +478,13 @@ class _AdminPanelState extends State<AdminPanel> {
                       ),
                       child: InkWell(
                         onTap: () {
-                          // ไปยังหน้าจัดการการจอง
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('อยู่ระหว่างการพัฒนา')),
+                          // สร้างหน้าจัดการการจองแบบง่ายๆ
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  _buildBookingManagementPage(),
+                            ),
                           );
                         },
                         borderRadius: BorderRadius.circular(12),
@@ -596,6 +603,161 @@ class _AdminPanelState extends State<AdminPanel> {
               ),
             ),
     );
+  }
+
+  // เพิ่มฟังก์ชันใหม่ในคลาส _AdminPanelState
+  Widget _buildUserManagementPage() {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('จัดการผู้ใช้งาน'),
+        backgroundColor: Colors.orange,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Center(child: Text('ไม่พบข้อมูลผู้ใช้งาน'));
+            }
+
+            return ListView.builder(
+                itemCount: snapshot.data!.docs.length,
+                padding: EdgeInsets.all(16),
+                itemBuilder: (context, index) {
+                  final doc = snapshot.data!.docs[index];
+                  final userData = doc.data() as Map<String, dynamic>;
+
+                  return Card(
+                    margin: EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: userData['photo'] != null &&
+                                userData['photo'] != 'images/User.png'
+                            ? NetworkImage(userData['photo'])
+                            : null,
+                        child: userData['photo'] == 'images/User.png'
+                            ? Icon(Icons.person)
+                            : null,
+                      ),
+                      title: Text(userData['name'] ?? 'ไม่ระบุชื่อ'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(userData['email'] ?? 'ไม่ระบุอีเมล'),
+                          Text('บทบาท: ${userData['role'] ?? 'user'}'),
+                        ],
+                      ),
+                      trailing: userData['role'] == 'admin'
+                          ? Chip(
+                              label: Text('แอดมิน'),
+                              backgroundColor: Colors.orange.shade100)
+                          : userData['role'] == 'sitter'
+                              ? Chip(
+                                  label: Text('พี่เลี้ยง'),
+                                  backgroundColor: Colors.blue.shade100)
+                              : Chip(
+                                  label: Text('ผู้ใช้'),
+                                  backgroundColor: Colors.green.shade100),
+                    ),
+                  );
+                });
+          }),
+    );
+  }
+
+  // เพิ่มฟังก์ชันใหม่ในคลาส _AdminPanelState
+  Widget _buildBookingManagementPage() {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('จัดการการจอง'),
+        backgroundColor: Colors.orange,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('bookings').snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Center(child: Text('ไม่พบข้อมูลการจอง'));
+            }
+
+            return ListView.builder(
+                itemCount: snapshot.data!.docs.length,
+                padding: EdgeInsets.all(16),
+                itemBuilder: (context, index) {
+                  final doc = snapshot.data!.docs[index];
+                  final bookingData = doc.data() as Map<String, dynamic>;
+                  final status = bookingData['status'] ?? 'pending';
+
+                  return Card(
+                    margin: EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      title: Text('การจองรหัส: ${doc.id.substring(0, 8)}...'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('สถานะ: $_getStatusText(status)'),
+                          if (bookingData['totalPrice'] != null)
+                            Text('ราคา: ฿${bookingData['totalPrice']}'),
+                        ],
+                      ),
+                      trailing: Container(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(status).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _getStatusText(status),
+                          style: TextStyle(color: _getStatusColor(status)),
+                        ),
+                      ),
+                    ),
+                  );
+                });
+          }),
+    );
+  }
+
+// เพิ่มฟังก์ชันเสริมสำหรับแปลงสถานะและสี
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'รอการยืนยัน';
+      case 'confirmed':
+        return 'ยืนยันแล้ว';
+      case 'in_progress':
+        return 'กำลังดูแล';
+      case 'completed':
+        return 'เสร็จสิ้น';
+      case 'cancelled':
+        return 'ยกเลิก';
+      default:
+        return 'ไม่ทราบสถานะ';
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange;
+      case 'confirmed':
+        return Colors.green;
+      case 'in_progress':
+        return Colors.blue;
+      case 'completed':
+        return Colors.purple;
+      case 'cancelled':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
   // Widget สำหรับสร้างการ์ดแสดงข้อมูลสถิติ
