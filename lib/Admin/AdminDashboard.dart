@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:myproject/Admin/AdminNotificationsPage%20.dart';
+import 'package:myproject/Admin/SitterVerificationPage.dart';
+import 'package:myproject/Admin/BookingManagementPage.dart';
+import 'package:myproject/Admin/BookingDetailPage.dart';
+import 'package:myproject/Admin/BookingManagementPage.dart';
 import 'package:myproject/Admin/SitterVerificationPage.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -125,7 +130,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 IconButton(
                   icon: Icon(Icons.notifications),
                   onPressed: () {
-                    // แสดงการแจ้งเตือน
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AdminNotificationsPage(),
+                      ),
+                    ).then((_) => _loadDashboardData());
                   },
                   tooltip: 'การแจ้งเตือน',
                 ),
@@ -385,7 +395,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       ),
                       TextButton(
                         onPressed: () {
-                          // นำไปยังหน้าจัดการการจองทั้งหมด
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => BookingManagementPage(),
+                            ),
+                          ).then((_) => _loadDashboardData());
                         },
                         child: Text('ดูทั้งหมด'),
                       ),
@@ -451,7 +466,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   ),
                                 ),
                                 onTap: () {
-                                  // นำไปยังหน้ารายละเอียดการจอง
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => BookingDetailPage(
+                                        bookingId: booking.id,
+                                      ),
+                                    ),
+                                  ).then((_) => _loadDashboardData());
                                 },
                               ),
                             );
@@ -558,5 +580,3 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 }
-//     }
-//   @override  
