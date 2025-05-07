@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:myproject/Admin/NotificationService.dart';
 import 'package:myproject/Admin/SitterApprovalPage.dart';
 import 'package:myproject/pages.dart/login.dart';
+import 'package:intl/intl.dart';
 
 class AdminPanel extends StatefulWidget {
   const AdminPanel({Key? key}) : super(key: key);
@@ -947,5 +949,79 @@ class _AdminPanelState extends State<AdminPanel> {
         ),
       ),
     );
+  }
+
+  Future<void> _updateBookingStatus(String bookingId, String newStatus) async {
+    try {
+      // Show loading indicator
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Get booking reference
+      final bookingRef =
+          FirebaseFirestore.instance.collection('bookings').doc(bookingId);
+
+      // Get current booking data
+      final bookingDoc = await bookingRef.get();
+      if (!bookingDoc.exists) {
+        throw 'Booking not found';
+      }
+
+      final bookingData = bookingDoc.data() as Map<String, dynamic>;
+
+      // Update booking status
+      await bookingRef.update({
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Send notification to user
+      final notificationService = NotificationService();
+      await notificationService.sendBookingStatusNotification(
+        userId: bookingData['userId'],
+        bookingId: bookingId,
+        status: newStatus,
+        message: 'การจองของคุณได้รับการ${_getStatusText(newStatus)}แล้ว',
+      );
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('อัพเดทสถานะเรียบร้อย')),
+      );
+    } catch (e) {
+      print('Error updating booking status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDates(List<dynamic> dates) {
+    try {
+      // Convert timestamps to DateTime objects and sort them
+      List<DateTime> sortedDates =
+          dates.map((date) => (date as Timestamp).toDate()).toList()..sort();
+
+      if (sortedDates.isEmpty) {
+        return 'ไม่ระบุวันที่';
+      }
+
+      // Format each date using intl package's DateFormat
+      final DateFormat formatter = DateFormat('dd/MM/yyyy');
+      if (sortedDates.length == 1) {
+        return formatter.format(sortedDates[0]);
+      }
+
+      // If multiple dates, show range
+      return '${formatter.format(sortedDates.first)} - ${formatter.format(sortedDates.last)}';
+    } catch (e) {
+      print('Error formatting dates: $e');
+      return 'รูปแบบวันที่ไม่ถูกต้อง';
+    }
   }
 }
