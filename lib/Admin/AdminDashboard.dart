@@ -2,16 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:myproject/Admin/SitterApprovalPage.dart';
+import 'package:myproject/Admin/UserManagementPage.dart';
+import 'package:myproject/Admin/BookingManagementPage.dart';
+import 'package:myproject/Admin/SitterIncomeReport.dart';
 import 'package:myproject/pages.dart/login.dart';
 
-class AdminPanel extends StatefulWidget {
-  const AdminPanel({Key? key}) : super(key: key);
+class AdminDashboard extends StatefulWidget {
+  const AdminDashboard({Key? key}) : super(key: key);
 
   @override
-  State<AdminPanel> createState() => _AdminPanelState();
+  State<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminPanelState extends State<AdminPanel> {
+class _AdminDashboardState extends State<AdminDashboard> {
   // ตัวแปรเก็บข้อมูลสถิติ
   int _pendingSittersCount = 0;
   int _approvedSittersCount = 0;
@@ -20,6 +23,7 @@ class _AdminPanelState extends State<AdminPanel> {
   bool _isLoading = true;
   String _adminName = "ผู้ดูแลระบบ";
   String _adminEmail = "";
+  String _adminPhoto = "";
 
   @override
   void initState() {
@@ -44,6 +48,7 @@ class _AdminPanelState extends State<AdminPanel> {
           setState(() {
             _adminName = userData['name'] ?? "ผู้ดูแลระบบ";
             _adminEmail = userData['email'] ?? "";
+            _adminPhoto = userData['photo'] ?? "";
           });
         }
       }
@@ -104,7 +109,7 @@ class _AdminPanelState extends State<AdminPanel> {
         builder: (context) => AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.logout, color: Colors.orange),
+              Icon(Icons.logout, color: Colors.deepOrange),
               SizedBox(width: 10),
               Text('ออกจากระบบ'),
             ],
@@ -126,7 +131,7 @@ class _AdminPanelState extends State<AdminPanel> {
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
+                backgroundColor: Colors.deepOrange,
               ),
               child: Text('ออกจากระบบ'),
             ),
@@ -145,8 +150,8 @@ class _AdminPanelState extends State<AdminPanel> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('ผู้ดูแลระบบ'),
-        backgroundColor: Colors.orange,
+        title: Text('แดชบอร์ดผู้ดูแลระบบ'),
+        backgroundColor: Colors.deepOrange,
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
@@ -161,13 +166,13 @@ class _AdminPanelState extends State<AdminPanel> {
         ],
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: Colors.orange))
+          ? Center(child: CircularProgressIndicator(color: Colors.deepOrange))
           : Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.orange.shade50, Colors.white],
+                  colors: [Colors.deepOrange.shade50, Colors.white],
                 ),
               ),
               child: SingleChildScrollView(
@@ -187,12 +192,19 @@ class _AdminPanelState extends State<AdminPanel> {
                           children: [
                             CircleAvatar(
                               radius: 40,
-                              backgroundColor: Colors.orange.shade200,
-                              child: Icon(
-                                Icons.admin_panel_settings,
-                                size: 40,
-                                color: Colors.orange.shade800,
-                              ),
+                              backgroundImage: _adminPhoto.isNotEmpty
+                                  ? NetworkImage(_adminPhoto)
+                                  : null,
+                              backgroundColor: _adminPhoto.isEmpty
+                                  ? Colors.deepOrange.shade200
+                                  : null,
+                              child: _adminPhoto.isEmpty
+                                  ? Icon(
+                                      Icons.admin_panel_settings,
+                                      size: 40,
+                                      color: Colors.deepOrange.shade800,
+                                    )
+                                  : null,
                             ),
                             SizedBox(width: 20),
                             Expanded(
@@ -211,7 +223,7 @@ class _AdminPanelState extends State<AdminPanel> {
                                     style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.orange.shade800,
+                                      color: Colors.deepOrange.shade800,
                                     ),
                                   ),
                                   if (_adminEmail.isNotEmpty)
@@ -232,13 +244,19 @@ class _AdminPanelState extends State<AdminPanel> {
                     SizedBox(height: 20),
 
                     // สรุปข้อมูลทั่วไป
-                    Text(
-                      'ภาพรวมระบบ',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.dashboard, color: Colors.deepOrange),
+                        SizedBox(width: 8),
+                        Text(
+                          'ภาพรวมระบบ',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: 10),
 
@@ -255,7 +273,7 @@ class _AdminPanelState extends State<AdminPanel> {
                           'ผู้รับเลี้ยงแมวรออนุมัติ',
                           _pendingSittersCount.toString(),
                           Icons.pending_actions,
-                          Colors.orange,
+                          Colors.amber,
                           _pendingSittersCount > 0,
                         ),
                         _buildStatCard(
@@ -285,104 +303,42 @@ class _AdminPanelState extends State<AdminPanel> {
                     SizedBox(height: 30),
 
                     // เมนูการจัดการระบบ
-                    Text(
-                      'การจัดการระบบ',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    SizedBox(height: 10),
-
-                    // เมนูการอนุมัติผู้รับเลี้ยงแมว
-                    Card(
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SitterApprovalPage(),
-                            ),
-                          ).then((_) => _loadDashboardData());
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade100,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.person_add,
-                                  color: Colors.orange.shade700,
-                                  size: 30,
-                                ),
-                              ),
-                              SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'อนุมัติผู้รับเลี้ยงแมว',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'จัดการคำขอสมัครเป็นผู้รับเลี้ยงแมว',
-                                      style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _pendingSittersCount > 0
-                                      ? Colors.red
-                                      : Colors.grey,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  '$_pendingSittersCount',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                size: 16,
-                                color: Colors.grey[400],
-                              ),
-                            ],
+                    Row(
+                      children: [
+                        Icon(Icons.settings, color: Colors.deepOrange),
+                        SizedBox(width: 8),
+                        Text(
+                          'การจัดการระบบ',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
                           ),
                         ),
-                      ),
+                      ],
                     ),
                     SizedBox(height: 10),
 
+<<<<<<< HEAD:lib/Admin/AdminDashboard.dart
+                    // เมนูต่างๆ
+                    _buildMenuCard(
+                      'อนุมัติผู้รับเลี้ยงแมว',
+                      'จัดการคำขอสมัครเป็นผู้รับเลี้ยงแมว',
+                      Icons.person_add,
+                      Colors.amber,
+                      _pendingSittersCount.toString(),
+                      _pendingSittersCount > 0 ? Colors.red : Colors.grey,
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SitterApprovalPage(),
+                          ),
+                        ).then((_) => _loadDashboardData());
+                      },
+                    ),
+                    SizedBox(height: 10),
+=======
                     // จัดการผู้ใช้ทั้งหมด
                     Card(
                       elevation: 3,
@@ -556,8 +512,62 @@ class _AdminPanelState extends State<AdminPanel> {
                         ),
                       ),
                     ),
+>>>>>>> bc43a7e61cb0b4f46f3afd78312662a407959e9e:lib/Admin/AdminPage.dart
 
-                    SizedBox(height: 40),
+                    _buildMenuCard(
+                      'จัดการผู้ใช้งาน',
+                      'ดูและจัดการข้อมูลผู้ใช้ทั้งหมด',
+                      Icons.people,
+                      Colors.blue,
+                      _totalUsersCount.toString(),
+                      Colors.blue,
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => UserManagementPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 10),
+
+                    _buildMenuCard(
+                      'จัดการการจอง',
+                      'ดูและจัดการข้อมูลการจองทั้งหมด',
+                      Icons.calendar_month,
+                      Colors.purple,
+                      _totalBookingsCount.toString(),
+                      Colors.purple,
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => BookingManagementPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 10),
+
+                    _buildMenuCard(
+                      'รายงานรายได้พี่เลี้ยง',
+                      'ดูรายงานรายได้ของพี่เลี้ยงแมวทั้งหมด',
+                      Icons.attach_money,
+                      Colors.green,
+                      '',
+                      Colors.transparent,
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SitterIncomeReport(),
+                          ),
+                        );
+                      },
+                    ),
+
+                    SizedBox(height: 30),
 
                     // ข้อความเกี่ยวกับระบบ
                     Container(
@@ -590,9 +600,17 @@ class _AdminPanelState extends State<AdminPanel> {
                           ),
                           SizedBox(height: 8),
                           Text(
-                            'ระบบรับเลี้ยงแมวนี้ช่วยให้ผู้ดูแลระบบสามารถจัดการผู้รับเลี้ยงแมวได้อย่างมีประสิทธิภาพ เพื่อให้ระบบมีความน่าเชื่อถือและปลอดภัยสำหรับผู้ใช้งาน',
+                            'แอปพลิเคชันรับเลี้ยงแมวนี้ช่วยให้ผู้ดูแลระบบสามารถจัดการผู้รับเลี้ยงแมวได้อย่างมีประสิทธิภาพ เพื่อให้ระบบมีความน่าเชื่อถือและปลอดภัยสำหรับผู้ใช้งาน',
                             style: TextStyle(
                               color: Colors.blue.shade800,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'เวอร์ชัน 1.0.0 - อัพเดทล่าสุด: พฤษภาคม 2025',
+                            style: TextStyle(
+                              fontStyle: FontStyle.italic,
+                              color: Colors.blue.shade600,
                             ),
                           ),
                         ],
@@ -944,6 +962,95 @@ class _AdminPanelState extends State<AdminPanel> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Widget สำหรับสร้างการ์ดเมนู
+  Widget _buildMenuCard(
+    String title,
+    String subtitle,
+    IconData icon,
+    Color iconColor,
+    String badgeText,
+    Color badgeColor,
+    VoidCallback onTap,
+  ) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: 30,
+                ),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (badgeText.isNotEmpty)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: Colors.grey[400],
+              ),
+            ],
+          ),
         ),
       ),
     );

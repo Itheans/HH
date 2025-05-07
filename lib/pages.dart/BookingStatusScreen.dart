@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:myproject/pages.dart/reviwe.dart';
 
 class BookingStatusScreen extends StatefulWidget {
   @override
@@ -125,7 +126,7 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
             print(
                 'Sitter snapshot: exists=${sitterSnapshot.hasData ? sitterSnapshot.data!.exists : false}');
 
-            if (!sitterSnapshot.hasData) {
+            if (sitterId == null || sitterId.toString().isEmpty) {
               return Card(
                 margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 child: ListTile(
@@ -150,38 +151,23 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
                   children: [
                     Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(25),
-                          child: sitterData['photo'] != null &&
-                                  sitterData['photo'].toString().isNotEmpty
-                              ? Image.network(
-                                  sitterData['photo'],
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Icon(Icons.person, size: 50),
-                                )
-                              : Icon(Icons.person, size: 50),
-                        ),
+                        Icon(Icons.error_outline, color: Colors.red, size: 50),
                         SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                sitterData['name'] ?? 'ไม่ระบุชื่อ',
+                                'ข้อมูลไม่สมบูรณ์',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               Text(
-                                _getStatusText(
-                                    bookingData['status'] ?? 'pending'),
+                                'ไม่พบข้อมูลผู้รับเลี้ยง',
                                 style: TextStyle(
-                                  color: _getStatusColor(
-                                      bookingData['status'] ?? 'pending'),
+                                  color: Colors.red,
                                 ),
                               ),
                             ],
@@ -189,6 +175,7 @@ class _BookingStatusScreenState extends State<BookingStatusScreen> {
                         ),
                       ],
                     ),
+                    // ส่วนแสดงข้อมูลการจองอื่นๆ
                     SizedBox(height: 16),
                     if (bookingData['dates'] != null)
                       Text(

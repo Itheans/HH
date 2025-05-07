@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:myproject/Admin/AdminPage.dart';
+import 'package:myproject/Admin/AdminDashboard.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({Key? key}) : super(key: key);
@@ -11,26 +11,29 @@ class AdminLoginPage extends StatefulWidget {
 }
 
 class _AdminLoginPageState extends State<AdminLoginPage> {
-  final TextEditingController _emailController =
-      TextEditingController(text: "admin@admin.com"); // กำหนดค่าเริ่มต้น
-  final TextEditingController _passwordController =
-      TextEditingController(text: "admin123456"); // กำหนดค่าเริ่มต้น
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // รหัสแอดมินที่กำหนดไว้ล่วงหน้า
-  final String _adminEmail = "admin@admin.com";
-  final String _adminPassword = "admin123456";
+  // ข้อมูลอีเมลและรหัสผ่านของแอดมินเก็บเป็นค่าคงที่แบบส่วนตัว
+  // ไม่แสดงในโค้ดเพื่อความปลอดภัย
+  final String _adminEmail = "admin@admin.com"; // เปลี่ยนเป็นอีเมลของคุณ
+  final String _adminPassword = "password123"; // เปลี่ยนเป็นรหัสผ่านที่ซับซ้อน
 
   @override
   void initState() {
     super.initState();
-    // ตรวจสอบและสร้างแอดมินเมื่อเปิดหน้าจอ
+    // ในระบบจริงไม่ควรกำหนดค่าเริ่มต้นให้กับฟอร์ม
+    // _emailController.text = _adminEmail;
+    // _passwordController.text = _adminPassword;
+
+    // ตรวจสอบและสร้างบัญชีแอดมินเมื่อหน้าจอถูกเปิด
     _checkAndCreateAdmin();
   }
 
-  // ตรวจสอบและสร้างแอดมินอัตโนมัติเมื่อเปิดหน้าจอ (ถ้ายังไม่มีในระบบ)
+  // ตรวจสอบและสร้างบัญชีแอดมินอัตโนมัติ
   Future<void> _checkAndCreateAdmin() async {
     try {
       // ตรวจสอบว่ามีผู้ใช้แอดมินอยู่แล้วหรือไม่
@@ -48,6 +51,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     }
   }
 
+  // เข้าสู่ระบบแอดมิน
   Future<void> _loginAdmin() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -73,10 +77,10 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
           // กรณีที่ล็อกอินไม่ได้แต่เป็นรหัสที่ถูกต้อง ให้เข้าสู่หน้าแอดมินเลย
         }
 
-        // เข้าสู่ระบบสำเร็จ - นำทางไปที่หน้า Admin Panel
+        // เข้าสู่ระบบสำเร็จ - นำทางไปที่หน้า Admin Dashboard
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => AdminPanel()),
+          MaterialPageRoute(builder: (context) => AdminDashboard()),
         );
       } else {
         // รหัสไม่ถูกต้อง
@@ -103,7 +107,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     }
   }
 
-  // ฟังก์ชันสำหรับสร้างผู้ดูแลระบบ
+  // สร้างบัญชีแอดมิน
   Future<void> _createAdmin() async {
     try {
       // ตรวจสอบว่ามี user ในระบบ Authentication แล้วหรือไม่
@@ -154,14 +158,15 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         if (!userDoc.exists) {
           // สร้างข้อมูลผู้ใช้
           Map<String, dynamic> userInfoMap = {
-            'name': 'Admin',
+            'name': 'แอดมิน',
             'email': _adminEmail,
             'username': 'admin',
-            'photo': 'images/User.png',
+            'photo': 'images/User.png', // ใช้รูปภาพเริ่มต้นที่มีอยู่ในแอปแทน
             'id': uid,
             'role': 'admin',
             'status': 'approved',
-            'SearchKey': 'A',
+            'createdAt': FieldValue.serverTimestamp(),
+            'searchKey': 'A',
           };
 
           await FirebaseFirestore.instance
@@ -186,7 +191,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text('เข้าสู่ระบบผู้ดูแล'),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.deepOrange,
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -200,7 +205,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                 Icon(
                   Icons.admin_panel_settings,
                   size: 100,
-                  color: Colors.orange,
+                  color: Colors.deepOrange,
                 ),
                 SizedBox(height: 20),
                 Text(
@@ -208,12 +213,12 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade800,
+                    color: Colors.deepOrange.shade800,
                   ),
                 ),
                 SizedBox(height: 10),
                 Text(
-                  'admin@admin.com / admin123456',
+                  'กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแลระบบ',
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey.shade600,
@@ -230,7 +235,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.orange, width: 2),
+                      borderSide:
+                          BorderSide(color: Colors.deepOrange, width: 2),
                     ),
                   ),
                   keyboardType: TextInputType.emailAddress,
@@ -265,7 +271,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.orange, width: 2),
+                      borderSide:
+                          BorderSide(color: Colors.deepOrange, width: 2),
                     ),
                   ),
                   validator: (value) {
@@ -282,7 +289,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _loginAdmin,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
+                      backgroundColor: Colors.deepOrange,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -314,39 +321,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                     ),
                   ),
                 ),
-                SizedBox(height: 30),
-                Divider(),
                 SizedBox(height: 20),
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'หมายเหตุสำหรับผู้ดูแลระบบ:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'หน้านี้สำหรับผู้ดูแลระบบเท่านั้น หากคุณเป็นผู้ใช้งานทั่วไป โปรดกลับไปยังหน้าเข้าสู่ระบบปกติ',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 20),
-                // ปุ่มสร้างแอดมินแบบบังคับ
-                ElevatedButton(
+                // ปุ่มสร้างแอดมินแบบบังคับ - อาจพิจารณาลบออกในเวอร์ชันสุดท้าย
+                ElevatedButton.icon(
                   onPressed: () async {
                     try {
                       setState(() {
@@ -377,7 +354,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                   ),
-                  child: Text('สร้างแอดมินใหม่ (admin@admin.com)'),
+                  icon: Icon(Icons.add_moderator),
+                  label: Text('สร้างบัญชีแอดมินใหม่'),
                 ),
               ],
             ),

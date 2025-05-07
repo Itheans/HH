@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:myproject/Admin/NotificationService.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookingDetailPage extends StatefulWidget {
   final String bookingId;
@@ -20,6 +21,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Map<String, dynamic>? _sitterData;
   List<Map<String, dynamic>> _catsList = [];
   final NotificationService _notificationService = NotificationService();
+  TextEditingController _messageController = TextEditingController();
 
   @override
   void initState() {
@@ -99,26 +101,108 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     try {
       setState(() => _isLoading = true);
 
+      String adminMessage = _messageController.text.trim().isNotEmpty
+          ? _messageController.text.trim()
+          : _getDefaultMessageForStatus(newStatus);
+
       await FirebaseFirestore.instance
           .collection('bookings')
           .doc(widget.bookingId)
           .update({
         'status': newStatus,
         'updatedAt': FieldValue.serverTimestamp(),
-        'adminMessage': _getDefaultMessageForStatus(newStatus),
+        'adminMessage': adminMessage,
       });
 
+      // ส่งการแจ้งเตือนไปยังผู้ใช้
+      await _notificationService.sendBookingStatusNotification(
+        userId: _bookingData!['userId'],
+        bookingId: widget.bookingId,
+        status: newStatus,
+        message: adminMessage,
+      );
+
+      // ส่งการแจ้งเตือนไปยังพี่เลี้ยง
+      await _notificationService.sendBookingStatusNotification(
+        userId: _bookingData!['sitterId'],
+        bookingId: widget.bookingId,
+        status: newStatus,
+        message: adminMessage,
+      );
+
+      // รีเซ็ตข้อความ
+      _messageController.clear();
+
+      // โหลดข้อมูลใหม่
       _loadBookingData();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('อัพเดทสถานะสำเร็จ')),
+        SnackBar(
+          content: Text('อัพเดทสถานะสำเร็จ'),
+          backgroundColor: Colors.green,
+        ),
       );
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาด: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
+  }
+
+  // แสดงหน้าต่างสำหรับป้อนข้อความเพิ่มเติม
+  Future<void> _showMessageDialog(String newStatus) async {
+    _messageController.text = _getDefaultMessageForStatus(newStatus);
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('ข้อความแจ้งเตือน'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('กรุณาระบุข้อความที่จะส่งให้ผู้ใช้และพี่เลี้ยง:'),
+                SizedBox(height: 16),
+                TextField(
+                  controller: _messageController,
+                  decoration: InputDecoration(
+                    hintText: 'ข้อความแจ้งเตือน',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('ยกเลิก'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              child: Text('ยืนยัน'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _getStatusColor(newStatus),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _updateBookingStatus(newStatus);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   String _getDefaultMessageForStatus(String status) {
@@ -139,7 +223,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
-        return Colors.orange;
+        return Colors.amber;
       case 'confirmed':
         return Colors.green;
       case 'in_progress':
@@ -191,12 +275,57 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     return formatter.format(dateTimes.first);
   }
 
+  // เปิดแอปโทรศัพท์เพื่อโทรหาผู้ใช้หรือพี่เลี้ยง
+  Future<void> _callPhone(String phone) async {
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่พบหมายเลขโทรศัพท์')),
+      );
+      return;
+    }
+
+    final Uri phoneUri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(phoneUri)) {
+      await launchUrl(phoneUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถโทรออกได้')),
+      );
+    }
+  }
+
+  // เปิดแอปส่งข้อความเพื่อส่ง SMS
+  Future<void> _sendSMS(String phone) async {
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่พบหมายเลขโทรศัพท์')),
+      );
+      return;
+    }
+
+    final Uri smsUri = Uri(scheme: 'sms', path: phone);
+    if (await canLaunchUrl(smsUri)) {
+      await launchUrl(smsUri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถส่งข้อความได้')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('รายละเอียดการจอง'),
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.deepOrange,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _loadBookingData,
+            tooltip: 'รีเฟรชข้อมูล',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -313,22 +442,32 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'ข้อมูลผู้จอง',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.person, color: Colors.deepOrange),
+                SizedBox(width: 8),
+                Text(
+                  'ข้อมูลผู้จอง',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: _userData!['photo'] != null
+                  backgroundImage: _userData!['photo'] != null &&
+                          _userData!['photo'].toString().isNotEmpty &&
+                          _userData!['photo'] != 'images/User.png'
                       ? NetworkImage(_userData!['photo'])
                       : null,
-                  child: _userData!['photo'] == null
+                  child: (_userData!['photo'] == null ||
+                          _userData!['photo'].toString().isEmpty ||
+                          _userData!['photo'] == 'images/User.png')
                       ? const Icon(Icons.person, size: 30)
                       : null,
                 ),
@@ -350,9 +489,25 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                           style: TextStyle(color: Colors.grey.shade600),
                         ),
                       if (_userData!['phone'] != null)
-                        Text(
-                          _userData!['phone'],
-                          style: TextStyle(color: Colors.grey.shade600),
+                        Row(
+                          children: [
+                            Text(
+                              _userData!['phone'],
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                            SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _callPhone(_userData!['phone']),
+                              child: Icon(Icons.call,
+                                  color: Colors.green, size: 20),
+                            ),
+                            SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _sendSMS(_userData!['phone']),
+                              child: Icon(Icons.message,
+                                  color: Colors.blue, size: 20),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -383,22 +538,32 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'ข้อมูลพี่เลี้ยง',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.pets, color: Colors.deepOrange),
+                SizedBox(width: 8),
+                Text(
+                  'ข้อมูลพี่เลี้ยง',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundImage: _sitterData!['photo'] != null
+                  backgroundImage: _sitterData!['photo'] != null &&
+                          _sitterData!['photo'].toString().isNotEmpty &&
+                          _sitterData!['photo'] != 'images/User.png'
                       ? NetworkImage(_sitterData!['photo'])
                       : null,
-                  child: _sitterData!['photo'] == null
+                  child: (_sitterData!['photo'] == null ||
+                          _sitterData!['photo'].toString().isEmpty ||
+                          _sitterData!['photo'] == 'images/User.png')
                       ? const Icon(Icons.person, size: 30)
                       : null,
                 ),
@@ -420,9 +585,25 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                           style: TextStyle(color: Colors.grey.shade600),
                         ),
                       if (_sitterData!['phone'] != null)
-                        Text(
-                          _sitterData!['phone'],
-                          style: TextStyle(color: Colors.grey.shade600),
+                        Row(
+                          children: [
+                            Text(
+                              _sitterData!['phone'],
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                            SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _callPhone(_sitterData!['phone']),
+                              child: Icon(Icons.call,
+                                  color: Colors.green, size: 20),
+                            ),
+                            SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _sendSMS(_sitterData!['phone']),
+                              child: Icon(Icons.message,
+                                  color: Colors.blue, size: 20),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -444,12 +625,18 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'รายละเอียดการจอง',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.deepOrange),
+                SizedBox(width: 8),
+                Text(
+                  'รายละเอียดการจอง',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             _buildDetailRow(
@@ -469,6 +656,12 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
               '฿${_bookingData!['totalPrice'] ?? 0}',
               valueColor: Colors.green,
             ),
+            if (_bookingData!['adminMessage'] != null &&
+                _bookingData!['adminMessage'].isNotEmpty)
+              _buildDetailRow(
+                'ข้อความจากแอดมิน:',
+                _bookingData!['adminMessage'],
+              ),
             if (_bookingData!['notes'] != null &&
                 _bookingData!['notes'].isNotEmpty)
               _buildDetailRow(
@@ -529,12 +722,18 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'แมวที่ฝากเลี้ยง',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.pets, color: Colors.deepOrange),
+                SizedBox(width: 8),
+                Text(
+                  'แมวที่ฝากเลี้ยง',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             ListView.separated(
@@ -556,7 +755,14 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                         : null,
                   ),
                   title: Text(cat['name'] ?? 'ไม่ระบุชื่อแมว'),
-                  subtitle: Text(cat['breed'] ?? 'ไม่ระบุสายพันธุ์'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(cat['breed'] ?? 'ไม่ระบุสายพันธุ์'),
+                      if (cat['age'] != null) Text('อายุ: ${cat['age']} ปี'),
+                    ],
+                  ),
+                  isThreeLine: cat['age'] != null,
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 );
@@ -607,12 +813,18 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'อัพเดทสถานะ',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Icon(Icons.update, color: Colors.deepOrange),
+                SizedBox(width: 8),
+                Text(
+                  'อัพเดทสถานะ',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             Row(
@@ -620,15 +832,18 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ElevatedButton(
-                      onPressed: () =>
-                          _updateBookingStatus(statusItem['value']),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showMessageDialog(statusItem['value']),
+                      icon: Icon(_getIconForStatus(statusItem['value'])),
+                      label: Text(statusItem['label']),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: statusItem['color'],
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      child: Text(statusItem['label']),
                     ),
                   ),
                 );
@@ -638,5 +853,20 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         ),
       ),
     );
+  }
+
+  IconData _getIconForStatus(String status) {
+    switch (status) {
+      case 'confirmed':
+        return Icons.check_circle;
+      case 'in_progress':
+        return Icons.pets;
+      case 'completed':
+        return Icons.done_all;
+      case 'cancelled':
+        return Icons.cancel;
+      default:
+        return Icons.update;
+    }
   }
 }
