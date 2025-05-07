@@ -18,12 +18,41 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // เพิ่มแคชข้อมูลผู้ใช้เพื่อป้องกันการโหลดซ้ำ
+  Map<String, Map<String, dynamic>> _usersCache = {};
+
   @override
   void initState() {
     super.initState();
     // กำหนดค่าเริ่มต้นให้วันที่
     _endDate = DateTime.now();
     _startDate = _endDate!.subtract(Duration(days: 30));
+  }
+
+  // ฟังก์ชันดึงข้อมูลผู้ใช้โดยใช้แคช
+  Future<Map<String, dynamic>?> _getUserData(String userId) async {
+    // ถ้ามีข้อมูลในแคชแล้ว ให้ใช้จากแคชเลย
+    if (_usersCache.containsKey(userId)) {
+      return _usersCache[userId];
+    }
+
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+        // เก็บข้อมูลในแคช
+        _usersCache[userId] = userData;
+        return userData;
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
+
+    return null;
   }
 
   String _formatDates(List<dynamic> dates) {
@@ -127,6 +156,45 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
     }
   }
 
+  // อัพเดทสถานะการจอง
+  Future<void> _updateBookingStatus(String bookingId, String newStatus) async {
+    try {
+      // แสดง loading
+      setState(() {
+        _isLoading = true;
+      });
+
+      // อัพเดทสถานะการจอง
+      await FirebaseFirestore.instance
+          .collection('bookings')
+          .doc(bookingId)
+          .update({
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // แสดงข้อความสำเร็จ
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('อัพเดทสถานะสำเร็จ'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Error updating booking status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาด: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -225,7 +293,10 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
 
           // รายการการจอง
           Expanded(
-            child: _buildBookingsList(),
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(color: Colors.deepOrange))
+                : _buildBookingsList(),
           ),
         ],
       ),
@@ -277,7 +348,8 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
       stream: _buildBookingsQuery(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return Center(
+              child: CircularProgressIndicator(color: Colors.deepOrange));
         }
 
         if (snapshot.hasError) {
@@ -371,174 +443,22 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
                 itemBuilder: (context, index) {
                   final doc = filteredDocs[index];
                   final bookingData = doc.data() as Map<String, dynamic>;
-                  final status = bookingData['status'] ?? 'pending';
 
-                  return Card(
-                    margin: EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => BookingDetailPage(
-                              bookingId: doc.id,
-                            ),
+                  // ใช้ Widget ที่สร้างใหม่สำหรับแสดงรายการการจอง
+                  return BookingItemWidget(
+                    bookingData: bookingData,
+                    bookingId: doc.id,
+                    onStatusUpdate: _updateBookingStatus,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BookingDetailPage(
+                            bookingId: doc.id,
                           ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: _getStatusColor(status)
-                                        .withOpacity(0.2),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _getStatusIcon(status),
-                                    color: _getStatusColor(status),
-                                    size: 24,
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'รหัส: ${doc.id.substring(0, 8)}...',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: _getStatusColor(status)
-                                                  .withOpacity(0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              _getStatusText(status),
-                                              style: TextStyle(
-                                                color: _getStatusColor(status),
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                          SizedBox(width: 8),
-                                          if (bookingData['totalPrice'] != null)
-                                            Text(
-                                              '฿${bookingData['totalPrice']}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: Colors.green.shade700,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    if (bookingData['createdAt'] != null)
-                                      Text(
-                                        DateFormat('dd/MM/yyyy').format(
-                                            (bookingData['createdAt']
-                                                    as Timestamp)
-                                                .toDate()),
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    SizedBox(height: 4),
-                                    Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 16,
-                                      color: Colors.grey[400],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            Divider(height: 24),
-                            _buildBookingDetailRow(
-                              'วันที่ฝากเลี้ยง:',
-                              bookingData['dates'] != null
-                                  ? _formatDates(bookingData['dates'])
-                                  : 'ไม่ระบุ',
-                              Icons.calendar_month,
-                            ),
-                            SizedBox(height: 8),
-                            FutureBuilder<DocumentSnapshot>(
-                              future: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(bookingData['userId'])
-                                  .get(),
-                              builder: (context, userSnapshot) {
-                                String userName = 'กำลังโหลด...';
-                                if (userSnapshot.hasData &&
-                                    userSnapshot.data!.exists) {
-                                  final userData = userSnapshot.data!.data()
-                                      as Map<String, dynamic>;
-                                  userName = userData['name'] ?? 'ไม่ระบุชื่อ';
-                                }
-                                return _buildBookingDetailRow(
-                                  'ผู้จอง:',
-                                  userName,
-                                  Icons.person,
-                                );
-                              },
-                            ),
-                            SizedBox(height: 8),
-                            FutureBuilder<DocumentSnapshot>(
-                              future: FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(bookingData['sitterId'])
-                                  .get(),
-                              builder: (context, sitterSnapshot) {
-                                String sitterName = 'กำลังโหลด...';
-                                if (sitterSnapshot.hasData &&
-                                    sitterSnapshot.data!.exists) {
-                                  final sitterData = sitterSnapshot.data!.data()
-                                      as Map<String, dynamic>;
-                                  sitterName =
-                                      sitterData['name'] ?? 'ไม่ระบุชื่อ';
-                                }
-                                return _buildBookingDetailRow(
-                                  'พี่เลี้ยง:',
-                                  sitterName,
-                                  Icons.pets,
-                                );
-                              },
-                            ),
-                          ],
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               );
@@ -590,6 +510,343 @@ class _BookingManagementPageState extends State<BookingManagementPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// สร้าง Widget ใหม่สำหรับแสดงรายการการจอง
+class BookingItemWidget extends StatefulWidget {
+  final Map<String, dynamic> bookingData;
+  final String bookingId;
+  final Function(String, String) onStatusUpdate;
+  final VoidCallback onTap;
+
+  const BookingItemWidget({
+    Key? key,
+    required this.bookingData,
+    required this.bookingId,
+    required this.onStatusUpdate,
+    required this.onTap,
+  }) : super(key: key);
+
+  @override
+  _BookingItemWidgetState createState() => _BookingItemWidgetState();
+}
+
+class _BookingItemWidgetState extends State<BookingItemWidget> {
+  String _userName = 'ไม่พบข้อมูลผู้ใช้'; // เปลี่ยนค่าเริ่มต้น
+  String _sitterName = 'ไม่พบข้อมูลพี่เลี้ยง'; // เปลี่ยนค่าเริ่มต้น
+
+  @override
+  void initState() {
+    super.initState();
+    // เรียกโหลดข้อมูลทันทีที่สร้าง Widget
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    // เพิ่ม print เพื่อดีบั๊ก
+    print('Loading user data for booking ${widget.bookingId}');
+
+    try {
+      // ตรวจสอบว่ามี userId หรือไม่
+      if (widget.bookingData.containsKey('userId') &&
+          widget.bookingData['userId'] != null) {
+        String userId = widget.bookingData['userId'];
+        print('User ID: $userId');
+
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        print('User doc exists: ${userDoc.exists}');
+
+        if (userDoc.exists) {
+          Map<String, dynamic> userData =
+              userDoc.data() as Map<String, dynamic>;
+          print('User name: ${userData['name']}');
+
+          setState(() {
+            _userName = userData['name'] ?? 'ไม่ระบุชื่อ';
+          });
+        }
+      } else {
+        print('No userId in booking data');
+      }
+
+      // ตรวจสอบว่ามี sitterId หรือไม่
+      if (widget.bookingData.containsKey('sitterId') &&
+          widget.bookingData['sitterId'] != null) {
+        String sitterId = widget.bookingData['sitterId'];
+        print('Sitter ID: $sitterId');
+
+        DocumentSnapshot sitterDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(sitterId)
+            .get();
+
+        print('Sitter doc exists: ${sitterDoc.exists}');
+
+        if (sitterDoc.exists) {
+          Map<String, dynamic> sitterData =
+              sitterDoc.data() as Map<String, dynamic>;
+          print('Sitter name: ${sitterData['name']}');
+
+          setState(() {
+            _sitterName = sitterData['name'] ?? 'ไม่ระบุชื่อ';
+          });
+        }
+      } else {
+        print('No sitterId in booking data');
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
+  }
+
+  // ส่วนของโค้ดที่เหลือยังคงเหมือนเดิม
+  // ...
+
+  String _formatDates(List<dynamic> dates) {
+    if (dates.isEmpty) return 'ไม่ระบุวันที่';
+
+    final formatter = DateFormat('dd/MM/yyyy');
+    final List<DateTime> dateTimes = dates
+        .map((date) => date is Timestamp ? date.toDate() : DateTime.now())
+        .toList();
+
+    dateTimes.sort();
+
+    if (dateTimes.length > 1) {
+      return '${formatter.format(dateTimes.first)} - ${formatter.format(dateTimes.last)}';
+    }
+    return formatter.format(dateTimes.first);
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.amber;
+      case 'confirmed':
+        return Colors.green;
+      case 'in_progress':
+        return Colors.blue;
+      case 'completed':
+        return Colors.purple;
+      case 'cancelled':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'รอการยืนยัน';
+      case 'confirmed':
+        return 'ยืนยันแล้ว';
+      case 'in_progress':
+        return 'กำลังดูแล';
+      case 'completed':
+        return 'เสร็จสิ้น';
+      case 'cancelled':
+        return 'ยกเลิก';
+      default:
+        return 'ไม่ทราบสถานะ';
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'pending':
+        return Icons.hourglass_empty;
+      case 'confirmed':
+        return Icons.check_circle;
+      case 'in_progress':
+        return Icons.pets;
+      case 'completed':
+        return Icons.done_all;
+      case 'cancelled':
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
+
+  Widget _buildBookingDetailRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.deepOrange),
+        SizedBox(width: 4),
+        Text(
+          '$label ',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.bookingData['status'] ?? 'pending';
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(status).withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _getStatusIcon(status),
+                      color: _getStatusColor(status),
+                      size: 24,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'รหัส: ${widget.bookingId.substring(0, 8)}...',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _getStatusColor(status).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _getStatusText(status),
+                                style: TextStyle(
+                                  color: _getStatusColor(status),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            if (widget.bookingData['totalPrice'] != null)
+                              Text(
+                                '฿${widget.bookingData['totalPrice']}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.green.shade700,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.bookingData['createdAt'] != null)
+                        Text(
+                          DateFormat('dd/MM/yyyy').format(
+                              (widget.bookingData['createdAt'] as Timestamp)
+                                  .toDate()),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      SizedBox(height: 4),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.grey[400],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Divider(height: 24),
+              _buildBookingDetailRow(
+                'วันที่ฝากเลี้ยง:',
+                widget.bookingData['dates'] != null
+                    ? _formatDates(widget.bookingData['dates'])
+                    : 'ไม่ระบุ',
+                Icons.calendar_month,
+              ),
+              SizedBox(height: 8),
+              _buildBookingDetailRow('ผู้จอง:', _userName, Icons.person),
+              SizedBox(height: 8),
+              _buildBookingDetailRow('พี่เลี้ยง:', _sitterName, Icons.pets),
+
+              // แสดงปุ่มยืนยันสำหรับการจองที่รอการยืนยันเท่านั้น
+              if (status == 'pending')
+                Padding(
+                  padding: const EdgeInsets.only(top: 12.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => widget.onStatusUpdate(
+                            widget.bookingId, 'cancelled'),
+                        child: Text('ยกเลิก'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: BorderSide(color: Colors.red),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => widget.onStatusUpdate(
+                            widget.bookingId, 'confirmed'),
+                        child: Text('ยืนยัน'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

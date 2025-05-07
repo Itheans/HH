@@ -63,7 +63,7 @@ dependencies:
   fl_chart: ^0.63.0
   slide_to_act:
   firebase_messaging:
- 
+  file_picker:
 
 
 dev_dependencies:
